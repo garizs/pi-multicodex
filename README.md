@@ -45,7 +45,9 @@ Run the extension directly during local development:
 pi -e ./index.ts
 ```
 
-## Commands
+## Current commands
+
+These commands reflect the current shipped implementation:
 
 - `/multicodex-use [identifier]`
   - Use an existing managed account, or start the Codex login flow when the account is missing or the stored auth is no longer valid.
@@ -55,6 +57,57 @@ pi -e ./index.ts
 - `/multicodex-footer`
   - Open an interactive panel to configure footer fields and ordering.
 
+## Planned command migration
+
+The next user-facing milestone is a command-surface migration to one command family:
+
+- `/multicodex`
+  - open the main interactive UI
+- `/multicodex show`
+  - show runtime state and active-account summary
+- `/multicodex use [identifier]`
+  - choose or activate an account
+- `/multicodex footer`
+  - open footer settings
+- `/multicodex rotation`
+  - open rotation settings
+- `/multicodex verify`
+  - verify runtime health and local storage access
+- `/multicodex path`
+  - show config and storage paths
+- `/multicodex reset`
+  - reset selected extension state
+- `/multicodex help`
+  - print compact usage text
+
+Migration policy:
+
+- the old top-level commands will be removed once `/multicodex` is ready
+- no backward-compatibility aliases are planned
+- README, roadmap, tests, and release notes will move together in the same change
+
+## Architecture overview
+
+The implementation is currently organized around these modules:
+
+- `provider.ts`
+  - overrides the normal `openai-codex` provider path
+  - mirrors Codex models and installs the managed stream wrapper
+- `stream-wrapper.ts`
+  - account selection, retry, and quota-rotation path during streaming
+- `account-manager.ts`
+  - managed account storage, token refresh, usage cache, activation logic, and auth import sync
+- `auth.ts`
+  - reads pi's `~/.pi/agent/auth.json` and extracts importable `openai-codex` OAuth state
+- `status.ts`
+  - footer rendering, footer settings persistence, footer settings panel, and footer status refresh logic
+- `commands.ts`
+  - current slash command registrations and account-selection flows
+- `hooks.ts`
+  - session-start and session-switch refresh behavior
+- `storage.ts`
+  - persisted account state in `~/.pi/agent/codex-accounts.json`
+
 ## Project direction
 
 This project is maintained as its own package and release line.
@@ -63,16 +116,19 @@ Current direction:
 
 - package name: `@victor-software-house/pi-multicodex`
 - Codex-only scope
-- local state stored at `~/.pi/agent/codex-accounts.json`
-- internal logic split into focused modules
+- local account state stored at `~/.pi/agent/codex-accounts.json`
+- footer and future extension settings stored under `pi-multicodex` in `~/.pi/agent/settings.json`
+- internal logic split into focused modules today, with a broader shared controller planned next
 - current roadmap tracked in `ROADMAP.md`
 
-Current next step:
+Current next milestones:
 
-- allow choosing an account directly from `/multicodex-status`
-- replace imported-account fallback labels with real email identity when it can be derived safely
-- improve the `/multicodex-use` and `/multicodex-status` everyday UX
-- add configurable rotation criteria with a dedicated settings panel
+1. Replace the split command surface with the `/multicodex` command family.
+2. Add dynamic autocomplete for subcommands and managed account identifiers.
+3. Make account inspection and selection consistently actionable.
+4. Persist footer settings immediately instead of waiting for panel close.
+5. Add configurable rotation settings and document the rotation behavior contract.
+6. Broaden the current footer controller into a shared MultiCodex controller.
 
 ## Behavior contract
 
@@ -97,7 +153,7 @@ The current runtime behavior is:
 ### Retry policy
 
 - MultiCodex retries account rotation up to 5 times for a single request.
-- Retries only happen for quota/rate-limit style failures that occur before output is forwarded.
+- Retries only happen for quota and rate-limit style failures that occur before output is forwarded.
 - Once output has started streaming, the original error is surfaced instead of rotating.
 
 ### Manual override behavior
@@ -179,6 +235,11 @@ Useful commands:
 npm trust list @victor-software-house/pi-multicodex
 script -q /dev/null bash -lc 'npm trust github @victor-software-house/pi-multicodex --repository victor-founder/pi-multicodex --file publish.yml --yes'
 ```
+
+## Related docs
+
+- `ROADMAP.md` for planned milestones and acceptance criteria
+- `AGENTS.md` for repository-specific agent guidance
 
 ## Acknowledgment
 

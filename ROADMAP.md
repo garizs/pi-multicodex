@@ -7,10 +7,11 @@
 The roadmap is centered on:
 
 - stable account management
-- clear release and install paths
-- maintainable internal structure
-- better usage visibility for the active account
-- a cleaner user experience inside pi
+- explicit and configurable rotation behavior
+- one clear operator command surface inside pi
+- maintainable extension architecture built around a shared controller
+- better status, verification, and recovery workflows
+- package-quality release discipline
 
 ## Current product state
 
@@ -18,13 +19,15 @@ The current shipped behavior is:
 
 - MultiCodex overrides the normal `openai-codex` provider path directly.
 - MultiCodex auto-imports pi's stored `openai-codex` OAuth auth when it is new or changed.
-- `/multicodex-use [identifier]` is the single account entrypoint.
-  - with an identifier: use existing account or start login when missing/stale
+- `/multicodex-use [identifier]` is the current account entrypoint.
+  - with an identifier: use existing account or start login when missing or stale
   - with no argument: open account picker
 - `/multicodex-status` shows managed account state.
 - `/multicodex-footer` opens the footer settings panel.
 - Footer settings are stored in `~/.pi/agent/settings.json` under `pi-multicodex`.
 - Managed account storage is stored in `~/.pi/agent/codex-accounts.json`.
+- Rotation criteria are still hard-coded.
+- Status and picker flows are still split across multiple commands.
 
 ## Operating principles
 
@@ -33,16 +36,16 @@ The current shipped behavior is:
 - Use pnpm for local development.
 - Keep releases small, validated, and repeatable.
 - Prefer explicit behavior over hidden heuristics.
+- Prefer one memorable top-level command over several loosely related commands.
+- Prefer dynamic autocomplete and operable non-UI subcommands over UI-only workflows.
+- Persist user settings immediately when changes are cheap and local.
+- Keep config, runtime state, and UI concerns separate.
 - Avoid custom encryption schemes for local secrets.
 - If secret storage needs stronger protection later, prefer platform-backed secure storage over homegrown crypto.
 
 ## Decisions already locked in
 
 - **Package name:** `@victor-software-house/pi-multicodex`
-- **Commands:**
-  - `/multicodex-use [identifier]`
-  - `/multicodex-status`
-  - `/multicodex-footer`
 - **Scope:** Codex only
 - **Local package manager:** pnpm
 - **Primary release path:** npmjs with trusted publishing
@@ -51,59 +54,146 @@ The current shipped behavior is:
 - **Auth strategy:** auto-import pi's stored `openai-codex` auth when it is new or changed
 - **Footer config storage:** `settings.json` key `pi-multicodex`
 - **Hook strategy:** `lefthook` runs `mise run pre-push` before push
+- **Migration policy for command UX:** move quickly to the new command family with no backward-compatibility aliases for deprecated commands
 
-## Current milestone — active-account usage footer polish
+## Command model decision
 
-Goal: finish the Codex footer so it feels like the built-in usage experience rather than an add-on.
+The extension is moving from several top-level commands to one operator command family.
 
-### Remaining work
+### Current command model
+
+- `/multicodex-use [identifier]`
+- `/multicodex-status`
+- `/multicodex-footer`
+
+### Target command model
+
+- `/multicodex`
+  - open the main interactive UI
+- `/multicodex show`
+  - show current runtime state and active account summary
+- `/multicodex use [identifier]`
+  - choose or activate an account
+- `/multicodex footer`
+  - open footer settings
+- `/multicodex rotation`
+  - open rotation settings
+- `/multicodex verify`
+  - verify runtime health and config access
+- `/multicodex path`
+  - show config and storage paths
+- `/multicodex reset`
+  - reset selected extension state
+- `/multicodex help`
+  - print compact usage text
+
+### Migration rules
+
+- Remove `/multicodex-use`, `/multicodex-status`, and `/multicodex-footer` as soon as `/multicodex` is ready.
+- Do not keep compatibility aliases.
+- Update README, ROADMAP, tests, and release notes in the same change.
+- Treat command-family migration as a user-facing breaking change and release it accordingly.
+
+## Current milestone — command-family migration and operator UX
+
+Goal: replace the split command surface with one coherent operator API and make the extension operable from both UI and non-UI flows.
+
+### Work items
+
+- [ ] Replace `/multicodex-use`, `/multicodex-status`, and `/multicodex-footer` with one `/multicodex` command family
+- [ ] Make `/multicodex` with no arguments open the main interactive UI
+- [ ] Add subcommands: `show`, `use`, `footer`, `rotation`, `verify`, `path`, `reset`, `help`
+- [ ] Add dynamic autocomplete for subcommands
+- [ ] Add dynamic autocomplete for `/multicodex use <identifier>` from managed accounts
+- [ ] Keep `show`, `verify`, `path`, `reset`, and `help` usable without opening a panel
+- [ ] Ensure non-interactive contexts return short operational messages instead of trying to open pickers or panels
+- [ ] Remove references to `/login` from notifications and docs when MultiCodex owns the account flow directly
+- [ ] Update tests to cover the new command-family behavior and autocomplete
+
+### UX acceptance criteria
+
+1. **Discoverability**
+   - Users only need to remember `/multicodex`.
+   - `help` returns one compact usage line.
+   - autocomplete exposes the available subcommands and account identifiers.
+
+2. **Primary flow**
+   - `/multicodex` opens the main UI.
+   - the main UI exposes account selection, account status, footer settings, and rotation settings.
+
+3. **Non-UI flow**
+   - `/multicodex show` prints a compact readable summary.
+   - `/multicodex use <identifier>` works without opening a picker.
+   - `/multicodex verify`, `/multicodex path`, and `/multicodex reset` do not require UI.
+
+4. **Removal of old commands**
+   - old command registrations are deleted, not aliased.
+   - documentation and tests mention only the new command family.
+
+## Next milestone — actionable account management UX
+
+Goal: make account inspection and switching consistent, direct, and easy to understand.
+
+### Work items
+
+- [ ] Make account selection explicit and actionable from the main UI
+- [ ] Ensure selecting an account actually activates it instead of only displaying it
+- [ ] Keep read-only summaries and mutating actions clearly separated
+- [ ] Show active account, manual override state, cooldown state, import source, and cached usage in a consistent format
+- [ ] Improve select-or-login flow for unknown or stale identifiers
+- [ ] Replace brittle string parsing in selection flows with structured item mapping
+- [ ] Replace imported-account fallback labels with real email identity when it can be derived safely
+- [ ] Make active-account information easier to understand during a session
+
+### UX acceptance criteria
+
+1. **Action clarity**
+   - every picker either performs a clearly named action or is read-only by design
+   - there is no status view that looks interactive but does nothing
+
+2. **Selection state**
+   - the active account is clearly marked
+   - manual override is clearly marked
+   - quota or cooldown state is clearly marked
+   - imported-account origin is clearly marked when relevant
+
+3. **Identity quality**
+   - imported accounts prefer a real email label when derivable safely
+   - fallback labels remain deterministic and readable when email cannot be derived
+
+## Parallel milestone — footer settings UX completion
+
+Goal: finish the footer experience so it matches the new command model and follows the recommended settings-panel pattern.
+
+### Already done
 
 - [x] Debounce model-change refresh work so rapid `Ctrl+P` cycling never blocks on auth sync or usage fetches
 - [x] Render each reset countdown next to its matching usage period instead of grouping them at the end
-- [x] Add live preview inside the `/multicodex-footer` panel
+- [x] Add live preview inside the footer settings panel
 - [x] Update the actual footer while footer settings change in the panel
 - [x] Tune the footer color palette before locking the final style
 - [x] Tighten footer updates so account switches and quota rotation are reflected immediately
 - [x] Add tests for live preview updates, model-switch debouncing, and footer/account synchronization
 
-### Footer milestone status
+### Remaining work
 
-The footer-polish work now covers:
+- [ ] Move footer settings access under `/multicodex footer`
+- [ ] Persist footer settings immediately on each change instead of waiting until panel close
+- [ ] Re-read normalized settings after save when needed so the UI reflects persisted truth
+- [ ] Add a non-UI footer summary path under `/multicodex show` or `/multicodex help` where useful
+- [ ] Keep live preview behavior while switching to immediate persistence
 
-1. **Model switching**
-   - `model_select` renders cached state immediately.
-   - Background refresh work is debounced so rapid `Ctrl+P` cycling does not block on auth sync or usage fetches.
-   - Non-Codex model selection clears the footer immediately.
+### Footer acceptance criteria
 
-2. **Footer layout**
-   - Each reset countdown now stays beside its matching usage period.
-   - Current layout target is:
-     - `Codex 5h:31% used (↺2h27m) 7d:87% used (↺2d6h) victor@...`
+- footer changes survive panel exit failures because persistence happens during editing
+- the footer panel remains shallow, searchable, and quick to scan
+- the actual footer remains synchronized with cached usage and active account state
 
-3. **Footer styling**
-   - Labels stay dim or muted.
-   - Usage windows use shared severity-based coloring across both reset periods.
-   - Subtle middle-dot separators improve scanability without turning the footer into a highlighted status bar.
+## Follow-up milestone — rotation behavior contract and settings
 
-4. **Footer settings UX**
-   - `/multicodex-footer` now shows a live preview.
-   - The actual footer updates live while the panel is open.
+Goal: make account rotation behavior explicit, configurable, and inspectable.
 
-5. **Footer/account synchronization**
-   - Footer updates re-render immediately from cached state on account-manager state changes.
-   - This keeps account and usage combinations aligned during account switches, usage refreshes, and quota rotation.
-
-## Suggested implementation order for the next session
-
-1. Allow choosing an account directly from the status panel as an alias for `/multicodex-use`.
-2. Replace imported-account fallback labels with real email identity when it can be derived safely.
-3. Improve `/multicodex-use` picker and select-or-login flow.
-4. Improve `/multicodex-status` output for active state, cooldowns, and manual override visibility.
-5. Start the behavior-contract documentation milestone for configurable rotation criteria.
-
-## Follow-up milestone — behavior contract
-
-Goal: make account rotation behavior explicit, configurable, and documented.
+### Behavior contract work
 
 - [ ] Define account selection priority
 - [ ] Define quota exhaustion semantics
@@ -114,19 +204,115 @@ Goal: make account rotation behavior explicit, configurable, and documented.
 - [ ] Define cache TTL and refresh rules
 - [ ] Define error classification rules
 - [ ] Document the behavior contract in README or a dedicated doc
-- [ ] Add configurable rotation criteria instead of hard-coding the current selection rules
-- [ ] Add a panel to configure provider rotation criteria and selection preferences
+
+### Rotation configuration work
+
+- [ ] Replace hard-coded rotation criteria with persisted configuration
+- [ ] Add a rotation settings model with normalized load and save behavior
+- [ ] Add a `/multicodex rotation` panel
 - [ ] Persist rotation criteria in settings and apply them to account selection
+- [ ] Expose the current rotation policy in `/multicodex show`
+- [ ] Expose a short rotation-health summary in `/multicodex verify` where practical
 
-## Follow-up milestone — UX improvements
+### Candidate settings to support
 
-Goal: improve everyday usability for multi-account management.
+- [ ] prefer untouched accounts
+- [ ] prefer earliest weekly reset when multiple accounts are available
+- [ ] configurable fallback cooldown when reset time is unknown
+- [ ] configurable retry count for pre-stream quota rotation
+- [ ] explicit enable or disable toggles for selection heuristics that are currently implicit
 
-- [ ] Allow choosing an account directly from the status panel as an alias for `/multicodex-use`
-- [ ] Replace imported-account fallback labels with real email identity when it can be derived safely
-- [ ] Improve the `/multicodex-use` account picker and select-or-login flow
-- [ ] Improve the status output for account state, cooldowns, and manual selection
-- [ ] Make active-account information easier to understand during a session
+### Rotation acceptance criteria
+
+- rotation rules are readable from config and from runtime summary output
+- account selection behavior no longer depends on undocumented hard-coded priorities
+- configuration changes take effect without ambiguous mixed state
+
+## Architecture milestone — shared MultiCodex controller
+
+Goal: move from scattered command logic to one shared controller that owns config, runtime summaries, and verification flows.
+
+### Work items
+
+- [ ] Introduce a broader MultiCodex controller instead of having footer logic own the only controller-like abstraction
+- [ ] Let commands call controller methods instead of duplicating state access and persistence logic
+- [ ] Keep durable config separate from runtime status and cached usage
+- [ ] Move verify logic into the controller
+- [ ] Move reset logic into the controller
+- [ ] Provide a stable path API for config and storage reporting
+- [ ] Keep hooks and command handlers thin by pushing orchestration into the controller
+
+### Target controller responsibilities
+
+- [ ] `getConfigPaths()`
+- [ ] `getFooterPreferences()`
+- [ ] `setFooterPreferences(...)`
+- [ ] `getRotationSettings()`
+- [ ] `setRotationSettings(...)`
+- [ ] `getRuntimeStatus()`
+- [ ] `refreshRuntimeStatus()`
+- [ ] `setManualAccount(...)`
+- [ ] `clearManualAccount()`
+- [ ] `reset(...)`
+
+### Architecture acceptance criteria
+
+- command handlers are mostly routing and notification glue
+- UI code does not write files directly
+- hooks do not duplicate command logic
+- config load and save paths are normalized and centralized
+
+## Runtime verification and recovery milestone
+
+Goal: make extension health easy to inspect and recover without reading source code.
+
+### Work items
+
+- [ ] Add `/multicodex verify`
+- [ ] Verify account storage readability and writability
+- [ ] Verify settings storage readability and writability
+- [ ] Verify importable `openai-codex` auth visibility
+- [ ] Verify active-account resolution state
+- [ ] Verify usage refresh behavior and report failures concisely
+- [ ] Add `/multicodex path`
+- [ ] Show managed account storage path and settings path
+- [ ] Add `/multicodex reset`
+- [ ] Define reset scopes such as manual override only, footer settings only, runtime cache only, or full extension reset
+
+### Verification acceptance criteria
+
+- a user can inspect storage paths without reading docs
+- a user can tell whether the extension is healthy from one short command
+- a user can recover from bad local state without deleting files manually
+
+## State restoration and event review
+
+Goal: confirm runtime behavior stays correct as the command model and controller expand.
+
+### Work items
+
+- [ ] Review whether session restoration should also handle `session_tree` and `session_fork` in addition to the current startup and switch events
+- [ ] Confirm manual override semantics remain correct across reloads and new sessions
+- [ ] Confirm status refresh paths do not leave stale footer state behind after model changes or shutdown
+- [ ] Re-check hook responsibilities after controller extraction so startup, switch, and refresh logic stay narrow
+
+### Acceptance criteria
+
+- state restoration behavior is explicit and tested
+- command-family migration does not introduce stale in-memory assumptions
+- footer and account state remain aligned after session lifecycle events
+
+## Suggested implementation order
+
+1. Build the `/multicodex` command family and delete the old commands.
+2. Add subcommand and account autocomplete.
+3. Make the main UI the zero-argument path.
+4. Make account selection fully actionable and remove no-op status selection.
+5. Move footer settings under the command family and switch to immediate persistence.
+6. Add `verify`, `path`, `reset`, and `help`.
+7. Introduce the broader MultiCodex controller.
+8. Add rotation settings and document the behavior contract.
+9. Review state restoration and lifecycle handling after the controller migration.
 
 ## Release discipline
 

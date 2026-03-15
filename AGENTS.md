@@ -18,11 +18,11 @@ The current codebase is organized around these responsibilities:
 - `auth.ts`
   - reads pi's `~/.pi/agent/auth.json` and extracts importable `openai-codex` OAuth state
 - `status.ts`
-  - footer rendering, footer settings persistence, footer settings panel
+  - footer rendering, footer settings persistence, footer settings panel, and footer refresh behavior
 - `commands.ts`
-  - `/multicodex-use [identifier]`
-  - `/multicodex-status`
-  - `/multicodex-footer`
+  - current slash command registrations and account-selection flows
+- `hooks.ts`
+  - session-start and session-switch refresh behavior
 - `storage.ts`
   - persisted account state in `~/.pi/agent/codex-accounts.json`
 
@@ -30,21 +30,33 @@ The current codebase is organized around these responsibilities:
 
 - MultiCodex owns the normal `openai-codex` provider path directly.
 - pi's stored `openai-codex` auth is auto-imported when new or changed.
-- `/multicodex-use [identifier]` is the only account entrypoint.
-  - with identifier: use account or login if missing/stale
-  - without identifier: account picker
+- Current shipped commands are:
+  - `/multicodex-use [identifier]`
+  - `/multicodex-status`
+  - `/multicodex-footer`
 - Footer settings are persisted in `~/.pi/agent/settings.json` under `pi-multicodex`.
+- Rotation criteria are still hard-coded.
 
-## Known unfinished areas
+## Active roadmap priorities
 
-These are the main open issues at the time of writing:
+When continuing work, prioritize these items before expanding scope:
 
-1. `/multicodex-status` should let the user choose an account directly as an alias for `/multicodex-use`.
-2. Imported `openai-codex` auth should prefer real email identity instead of fallback `OpenAI Codex <id>` labels when it can be derived safely.
-3. Account rotation criteria are still hard-coded and need a dedicated configuration panel.
-4. `/multicodex-use` and `/multicodex-status` still need general UX cleanup.
+1. Replace the three top-level commands with one `/multicodex` command family.
+2. Add dynamic autocomplete for subcommands and managed account identifiers.
+3. Make the zero-argument command open the main UI.
+4. Make account selection and status flows consistently actionable.
+5. Add `show`, `footer`, `rotation`, `verify`, `path`, `reset`, and `help` subcommands.
+6. Persist footer settings immediately instead of waiting until panel close.
+7. Add rotation settings and document the rotation behavior contract.
+8. Broaden the current footer controller into a shared MultiCodex controller.
+9. Replace imported-account fallback labels with real email identity when it can be derived safely.
 
-When continuing in a new session, start there before expanding scope.
+## Command migration policy
+
+- Move to the `/multicodex` command family as soon as it is ready.
+- Remove `/multicodex-use`, `/multicodex-status`, and `/multicodex-footer` in the same change.
+- Do not keep backward-compatibility aliases for the old commands.
+- Update README, ROADMAP, tests, and release notes together when the command migration lands.
 
 ## Goals
 
@@ -52,6 +64,8 @@ When continuing in a new session, start there before expanding scope.
 - Avoid deep imports that resolve to repo-local paths.
 - Keep runtime behavior compatible with pi extension docs.
 - Keep the published package self-contained, including all runtime TypeScript modules it imports.
+- Prefer one memorable operator command surface over several loosely related commands.
+- Prefer controller-owned config and runtime state over duplicated persistence logic.
 
 ## Packaging rules
 
@@ -60,10 +74,14 @@ When continuing in a new session, start there before expanding scope.
 - Do not move pi core packages into normal runtime `dependencies` unless pi package docs require it.
 - Keep the published tarball limited to runtime files only.
 
-## Type Safety
+## Type safety and architecture
 
 - Use public exports from `@mariozechner/pi-ai` and `@mariozechner/pi-coding-agent`.
 - Prefer small focused modules with explicit exports over large shared files.
+- Keep durable config, runtime status, and UI wiring separate.
+- Normalize config on load and save.
+- Let shared controller code own persistence instead of duplicating file writes in commands or panels.
+- Keep hooks and command handlers thin when controller extraction work starts.
 
 ## Checks
 
@@ -103,7 +121,7 @@ npm pack --dry-run
   - repository: `victor-founder/pi-multicodex`
   - workflow file: `.github/workflows/publish.yml`
 
-## Commit Workflow
+## Commit workflow
 
 - Do not batch unrelated changes into a single large commit.
 - Commit incrementally as each logical step is completed.
