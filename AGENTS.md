@@ -119,7 +119,7 @@ npm pack --dry-run
 - Do not use local `npm publish` for routine releases.
 - Keep the npm trusted publisher mapping aligned with:
   - package: `@victor-software-house/pi-multicodex`
-  - repository: `victor-founder/pi-multicodex`
+  - repository: `victor-software-house/pi-multicodex`
   - workflow file: `.github/workflows/publish.yml`
 
 ## Commit workflow

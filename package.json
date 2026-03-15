@@ -18,15 +18,15 @@
 		"extensions": [
 			"./index.ts"
 		],
-		"image": "https://raw.githubusercontent.com/victor-founder/pi-multicodex/main/assets/multicodex.png"
+		"image": "https://raw.githubusercontent.com/victor-software-house/pi-multicodex/main/assets/multicodex.png"
 	},
 	"repository": {
 		"type": "git",
-		"url": "git+https://github.com/victor-founder/pi-multicodex.git"
+		"url": "git+https://github.com/victor-software-house/pi-multicodex.git"
 	},
-	"homepage": "https://github.com/victor-founder/pi-multicodex#readme",
+	"homepage": "https://github.com/victor-software-house/pi-multicodex#readme",
 	"bugs": {
-		"url": "https://github.com/victor-founder/pi-multicodex/issues"
+		"url": "https://github.com/victor-software-house/pi-multicodex/issues"
 	},
 	"author": "Victor",
 	"files": [
