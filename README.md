@@ -2,14 +2,14 @@
 
 ![MultiCodex](./assets/multicodex.png)
 
-`@victor-software-house/pi-multicodex` is a pi extension for rotating multiple ChatGPT Codex OAuth accounts when using the `openai-codex-responses` API.
+`@victor-software-house/pi-multicodex` is a pi extension that rotates multiple ChatGPT Codex OAuth accounts for the `openai-codex-responses` API.
 
-Current behavior:
+## What it does
 
-- rotates on quota and rate-limit failures
+- rotates accounts on quota and rate-limit failures
 - prefers untouched accounts when usage data is available
 - otherwise prefers the account whose weekly window resets first
-- stays focused on Codex only
+- keeps the implementation focused on Codex account rotation
 
 ## Install
 
@@ -21,7 +21,7 @@ Restart `pi` after installation.
 
 ## Local development
 
-This repo uses `mise` to pin tool versions and `pnpm` for dependency management.
+This repo uses `mise` to pin tools and `pnpm` for dependency management.
 
 ```bash
 mise install
@@ -52,20 +52,18 @@ pi -e ./index.ts
 - `/multicodex-status`
   - Show account state and cached usage information.
 
-## Status
+## Project direction
 
-This package is being turned into an independent fork with deliberate breaking changes.
+This project is maintained as its own package and release line.
 
 Current direction:
 
 - package name: `@victor-software-house/pi-multicodex`
-- hard break from previous storage compatibility
 - Codex-only scope
-- independent implementation roadmap tracked in `fork-plan.md`
+- independent storage and release policy
+- current roadmap tracked in `ROADMAP.md`
 
 ## Release validation
-
-Local development uses pnpm, but published package output must remain npm-compatible.
 
 Minimum release checks:
 
@@ -74,22 +72,21 @@ pnpm check
 npm pack --dry-run
 ```
 
-Recommended release flow:
+Release flow:
 
-1. For the first publish of a brand-new package, publish manually from a trusted local machine.
-2. After the package exists on npm, configure npm trusted publishing for `.github/workflows/publish.yml`.
-3. Publish subsequent releases by pushing a matching `v*` git tag.
+1. Update `package.json` version.
+2. Run release checks.
+3. Commit the release.
+4. Create and push a matching `v*` tag.
+5. Let GitHub Actions publish through trusted publishing.
 
-Bootstrap publish:
-
-```bash
-npm run publish:dry -- <version>
-npm publish --access public --otp=<code>
-```
-
-Trusted publishing flow after bootstrap:
+Example:
 
 ```bash
 git tag v<version>
-git push origin v<version>
+git push origin main --tags
 ```
+
+## Acknowledgment
+
+This project descends from earlier MultiCodex work. Thanks to the original creator for the starting point that made this package possible.
