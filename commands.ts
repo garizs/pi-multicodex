@@ -73,26 +73,6 @@ export function registerCommands(
 	accountManager: AccountManager,
 	statusController: ReturnType<typeof createUsageStatusController>,
 ): void {
-	pi.registerCommand("multicodex-login", {
-		description: "Compatibility alias for /multicodex-use <identifier>",
-		handler: async (
-			args: string,
-			ctx: ExtensionCommandContext,
-		): Promise<void> => {
-			const identifier = args.trim();
-			if (!identifier) {
-				ctx.ui.notify(
-					"Please provide an email/identifier: /multicodex-use my@email.com",
-					"error",
-				);
-				return;
-			}
-
-			await useOrLoginAccount(pi, ctx, accountManager, identifier);
-			await statusController.refreshFor(ctx);
-		},
-	});
-
 	pi.registerCommand("multicodex-use", {
 		description:
 			"Use an existing Codex account, or log in when the identifier is missing",

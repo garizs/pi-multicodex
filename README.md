@@ -50,8 +50,6 @@ pi -e ./index.ts
 - `/multicodex-use [identifier]`
   - Use an existing managed account, or start the Codex login flow when the account is missing or the stored auth is no longer valid.
   - With no argument, opens an account picker.
-- `/multicodex-login <identifier>`
-  - Compatibility alias for `/multicodex-use <identifier>`.
 - `/multicodex-status`
   - Show managed account state and cached usage information.
 - `/multicodex-footer`

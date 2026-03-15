@@ -25,8 +25,7 @@ The roadmap is centered on:
 ## Decisions already locked in
 
 - **Package name:** `@victor-software-house/pi-multicodex`
-- **Commands:** converge on `/multicodex-use [identifier]` as the primary account command
-  - `/multicodex-login` remains a compatibility alias
+- **Commands:** use `/multicodex-use [identifier]` as the account command
   - `/multicodex-status`
   - `/multicodex-footer`
 - **Scope:** Codex only
@@ -99,12 +98,11 @@ Implementation next steps:
 
 1. Override `openai-codex` with the MultiCodex-managed stream wrapper.
 2. Import pi's stored `openai-codex` auth into managed account storage when it changes.
-3. Treat `/multicodex-use [identifier]` as the primary select-or-login entrypoint.
-4. Keep `/multicodex-login` only as a compatibility alias.
-5. Render the footer for normal Codex usage and show the active managed account beside 5h and 7d usage.
-6. Add an interactive footer settings panel for account visibility, 5h/7d/both reset countdown selection, usage mode, and field ordering.
-7. Refresh on session start, session switch, model change, turn end, manual account change, and low-frequency timer ticks.
-8. Add tests for auth import, provider override behavior, status formatting, cached-usage fallback, and extension event wiring.
+3. Treat `/multicodex-use [identifier]` as the select-or-login entrypoint.
+4. Render the footer for normal Codex usage and show the active managed account beside 5h and 7d usage.
+5. Add an interactive footer settings panel for account visibility, 5h/7d/both reset countdown selection, usage mode, and field ordering.
+6. Refresh on session start, session switch, model change, turn end, manual account change, and low-frequency timer ticks.
+7. Add tests for auth import, provider override behavior, status formatting, cached-usage fallback, and extension event wiring.
 
 ## Follow-up milestone — behavior contract
 
@@ -126,7 +124,7 @@ Goal: improve everyday usability for multi-account management.
 
 - [ ] Review whether commands should stay unchanged or gain a top-level management command
 - [ ] Improve account picker and status dialogs
-- [ ] Decide whether `/multicodex-login` remains argument-based or becomes interactive
+- [ ] Improve the `/multicodex-use` account picker and select-or-login flow
 - [ ] Improve the status output for account state, cooldowns, and manual selection
 - [ ] Make active-account information easier to understand during a session
 
