@@ -1,3 +1,10 @@
+## [2.0.6](https://github.com/victor-software-house/pi-multicodex/compare/v2.0.5...v2.0.6) (2026-03-15)
+
+
+### Bug Fixes
+
+* document severity-based footer color tiers ([ab9f8ce](https://github.com/victor-software-house/pi-multicodex/commit/ab9f8cec0a7a73db992ff4f4c9a0ce007abdda13))
+
 ## [2.0.5](https://github.com/victor-software-house/pi-multicodex/compare/v2.0.4...v2.0.5) (2026-03-15)
 
 
