@@ -145,4 +145,5 @@ This project incorporated and extended that footer concept:
 - **More settings.** Five configurable fields (usage mode, reset window, show account, show reset countdown, footer order) compared to two toggles.
 - **Settings panel.** Interactive `SettingsList` modal with live preview instead of separate toggle commands.
 - **Colored segments.** Footer renders usage percentages, separators, and account labels in distinct colors matched to the terminal theme.
+- **Severity-based colors.** Usage percentages shift through four color tiers (green, amber, warning, error) as quota depletes — green above 50% remaining, amber at 50%, warning at 25%, red at 10% or below. The thresholds flip automatically when the display mode is set to "used" instead of "left."
 - **Model-aware display.** Footer clears when switching to non-Codex models and debounces rapid model changes.
