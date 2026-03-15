@@ -81,9 +81,9 @@ The footer-polish work now covers:
      - `Codex 5h:31% used (↺2h27m) 7d:87% used (↺2d6h) victor@...`
 
 3. **Footer styling**
-   - Labels stay dim.
-   - Brand, account, and reset countdowns stay muted.
-   - Percentages use severity coloring.
+   - Labels stay dim or muted.
+   - Usage windows use shared severity-based coloring across both reset periods.
+   - Subtle middle-dot separators improve scanability without turning the footer into a highlighted status bar.
 
 4. **Footer settings UX**
    - `/multicodex-footer` now shows a live preview.
@@ -135,26 +135,27 @@ Every release should continue to pass at least:
 ```bash
 pnpm check
 npm pack --dry-run
+pnpm release:dry
 ```
 
 Target release flow:
 
-1. Prepare the release locally with `npm run release:prepare -- <version>`.
-2. Commit the prepared version bump.
-3. Create and push a matching `v*` tag.
-4. Let GitHub Actions publish through trusted publishing.
+1. Write Conventional Commits.
+2. Merge to `main`.
+3. Let GitHub Actions run CI and `semantic-release` from `.github/workflows/publish.yml`.
+4. Let npm trusted publishing handle `npm publish --provenance` without long-lived npm tokens.
 
 ## Final release validation
 
-Before the next real release, explicitly validate the full release path:
+Before treating the new release flow as fully settled, explicitly validate the full path:
 
-- [ ] Run `pnpm check`
-- [ ] Run `npm pack --dry-run`
-- [ ] Create and push the release tag
-- [ ] Verify the GitHub Actions trusted-publishing workflow completes successfully
-- [ ] Verify the new version is available on npmjs
-- [ ] Verify install or upgrade in pi from the published package
-- [ ] Verify the published tarball includes every runtime TypeScript module the extension imports
+- [x] Run `pnpm check`
+- [x] Run `npm pack --dry-run`
+- [x] Configure npm trusted publishing for `.github/workflows/publish.yml`
+- [x] Verify the GitHub Actions trusted-publishing workflow completes successfully
+- [ ] Verify the new version is available on npmjs after a release-triggering commit
+- [ ] Verify install or upgrade in pi from the published package after a release-triggering commit
+- [x] Verify the published tarball includes every runtime TypeScript module the extension imports
 
 ## Non-goals for now
 

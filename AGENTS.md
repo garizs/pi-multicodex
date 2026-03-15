@@ -39,11 +39,10 @@ The current codebase is organized around these responsibilities:
 
 These are the main open issues at the time of writing:
 
-1. `model_select` footer refresh is too expensive during rapid `Ctrl+P` model cycling.
-2. Footer layout still groups reset countdowns at the end instead of next to their matching periods.
-3. Footer color styling needs refinement.
-4. `/multicodex-footer` needs live preview while settings change.
-5. Footer updates need tighter synchronization with manual account changes and quota rotation.
+1. `/multicodex-status` should let the user choose an account directly as an alias for `/multicodex-use`.
+2. Imported `openai-codex` auth should prefer real email identity instead of fallback `OpenAI Codex <id>` labels when it can be derived safely.
+3. Account rotation criteria are still hard-coded and need a dedicated configuration panel.
+4. `/multicodex-use` and `/multicodex-status` still need general UX cleanup.
 
 When continuing in a new session, start there before expanding scope.
 

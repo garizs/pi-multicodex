@@ -69,9 +69,10 @@ Current direction:
 
 Current next step:
 
-- refine the footer color palette with small visual adjustments only
-- document the account-rotation behavior contract explicitly
+- allow choosing an account directly from `/multicodex-status`
+- replace imported-account fallback labels with real email identity when it can be derived safely
 - improve the `/multicodex-use` and `/multicodex-status` everyday UX
+- add configurable rotation criteria with a dedicated settings panel
 
 ## Behavior contract
 
