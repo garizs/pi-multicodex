@@ -10,6 +10,7 @@ import {
 } from "@mariozechner/pi-ai";
 import { createLinkedAbortController } from "./abort-utils";
 import type { AccountManager } from "./account-manager";
+import { isQuotaErrorMessage } from "./quota";
 
 const MAX_ROTATION_RETRIES = 5;
 
@@ -64,12 +65,6 @@ function createErrorAssistantMessage(
 function getErrorMessage(error: unknown): string {
 	if (error instanceof Error) return error.message;
 	return typeof error === "string" ? error : JSON.stringify(error);
-}
-
-function isQuotaErrorMessage(message: string): boolean {
-	return /\b429\b|quota|usage limit|rate.?limit|too many requests|limit reached/i.test(
-		message,
-	);
 }
 
 export function createStreamWrapper(
