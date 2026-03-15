@@ -11,6 +11,11 @@ export {
 	isAccountAvailable,
 	pickBestAccount,
 } from "./selection";
+export {
+	createUsageStatusController,
+	formatActiveAccountStatus,
+	isManagedModel,
+} from "./status";
 export type { Account } from "./storage";
 export { createStreamWrapper } from "./stream-wrapper";
 export type { CodexUsageSnapshot } from "./usage";

@@ -6,9 +6,11 @@ import { AccountManager } from "./account-manager";
 import { registerCommands } from "./commands";
 import { handleNewSessionSwitch, handleSessionStart } from "./hooks";
 import { buildMulticodexProviderConfig, PROVIDER_ID } from "./provider";
+import { createUsageStatusController } from "./status";
 
 export default function multicodexExtension(pi: ExtensionAPI) {
 	const accountManager = new AccountManager();
+	const statusController = createUsageStatusController(accountManager);
 	let lastContext: ExtensionContext | undefined;
 
 	accountManager.setWarningHandler((message) => {
@@ -22,11 +24,16 @@ export default function multicodexExtension(pi: ExtensionAPI) {
 		buildMulticodexProviderConfig(accountManager),
 	);
 
-	registerCommands(pi, accountManager);
+	registerCommands(pi, accountManager, statusController);
 
 	pi.on("session_start", (_event: unknown, ctx: ExtensionContext) => {
 		lastContext = ctx;
 		handleSessionStart(accountManager);
+		statusController.startAutoRefresh();
+		void (async () => {
+			await statusController.loadPreferences(ctx);
+			await statusController.refreshFor(ctx);
+		})();
 	});
 
 	pi.on(
@@ -36,6 +43,21 @@ export default function multicodexExtension(pi: ExtensionAPI) {
 			if (event.reason === "new") {
 				handleNewSessionSwitch(accountManager);
 			}
+			void statusController.refreshFor(ctx);
 		},
 	);
+
+	pi.on("turn_end", (_event: unknown, ctx: ExtensionContext) => {
+		lastContext = ctx;
+		void statusController.refreshFor(ctx);
+	});
+
+	pi.on("model_select", (_event: unknown, ctx: ExtensionContext) => {
+		lastContext = ctx;
+		void statusController.refreshFor(ctx);
+	});
+
+	pi.on("session_shutdown", (_event: unknown, ctx: ExtensionContext) => {
+		statusController.stopAutoRefresh(ctx);
+	});
 }

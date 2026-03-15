@@ -51,6 +51,8 @@ pi -e ./index.ts
   - Select an account manually for the current session.
 - `/multicodex-status`
   - Show account state and cached usage information.
+- `/multicodex-footer`
+  - Open an interactive panel to configure footer fields and ordering.
 
 ## Project direction
 
@@ -67,6 +69,11 @@ Current direction:
 Current next step:
 
 - add active-account usage visibility in pi for this extension's managed Codex accounts
+- mirror the existing codex usage footer style, including support for displaying both reset countdowns
+- show footer usage only when the selected model uses the `multicodex` provider override
+- show the active account identifier beside the 5h and 7d usage metrics
+- configure footer fields and ordering through an interactive panel
+- refresh the footer from the active managed account without polling aggressively
 
 ## Release validation
 
@@ -106,3 +113,5 @@ Do not use local `npm publish` for normal releases in this repo.
 ## Acknowledgment
 
 This project descends from earlier MultiCodex work. Thanks to the original creator for the starting point that made this package possible.
+
+The active-account usage footer work also draws on ideas from `calesennett/pi-codex-usage`. Thanks to its author for the reference implementation and footer design.

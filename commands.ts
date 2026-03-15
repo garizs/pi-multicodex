@@ -5,6 +5,7 @@ import type {
 } from "@mariozechner/pi-coding-agent";
 import type { AccountManager } from "./account-manager";
 import { openLoginInBrowser } from "./browser";
+import type { createUsageStatusController } from "./status";
 import { formatResetAt, isUsageUntouched } from "./usage";
 
 function getErrorMessage(error: unknown): string {
@@ -15,6 +16,7 @@ function getErrorMessage(error: unknown): string {
 export function registerCommands(
 	pi: ExtensionAPI,
 	accountManager: AccountManager,
+	statusController: ReturnType<typeof createUsageStatusController>,
 ): void {
 	pi.registerCommand("multicodex-login", {
 		description: "Login to an OpenAI Codex account for the rotation pool",
@@ -133,6 +135,16 @@ export function registerCommands(
 			});
 
 			await ctx.ui.select("MultiCodex Accounts", options);
+		},
+	});
+
+	pi.registerCommand("multicodex-footer", {
+		description: "Configure the MultiCodex usage footer",
+		handler: async (
+			_args: string,
+			ctx: ExtensionCommandContext,
+		): Promise<void> => {
+			await statusController.openPreferencesPanel(ctx);
 		},
 	});
 }

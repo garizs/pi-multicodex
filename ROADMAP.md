@@ -91,8 +91,18 @@ Planned work:
 - [ ] Display footer usage only when the active model is authenticated through this extension's provider override
 - [ ] Ensure the usage shown belongs to the currently selected active account
 - [ ] Display the logged-in account identifier beside the usage metrics
+- [ ] Add an interactive configuration panel for footer fields, reset countdown selection, and ordering
 - [ ] Reuse or adapt a refresh model that stays responsive without excessive polling
 - [ ] Keep the feature scoped to this extension's managed accounts rather than global Codex auth state
+
+Implementation next steps:
+
+1. Add a status controller dedicated to footer rendering.
+2. Gate footer rendering on the active model provider being `multicodex`.
+3. Read the active account from `AccountManager` and render its email beside 5h and 7d usage.
+4. Add an interactive footer settings panel for account visibility, 5h/7d/both reset countdown selection, usage mode, and field ordering.
+5. Refresh on session start, session switch, model change, turn end, and low-frequency timer ticks.
+6. Add tests for status formatting, provider gating, cached-usage fallback, settings behavior, and extension event wiring.
 
 ## Follow-up milestone — behavior contract
 
