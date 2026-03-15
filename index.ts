@@ -27,6 +27,10 @@ import type {
 	ExtensionCommandContext,
 	ExtensionContext,
 } from "@mariozechner/pi-coding-agent";
+import {
+	createLinkedAbortController,
+	createTimeoutController,
+} from "./abort-utils";
 import { isAccountAvailable, pickBestAccount } from "./selection";
 import {
 	type Account,
@@ -177,28 +181,6 @@ async function fetchCodexUsage(
 	} finally {
 		clear();
 	}
-}
-
-function createLinkedAbortController(signal?: AbortSignal): AbortController {
-	const controller = new AbortController();
-	if (signal?.aborted) {
-		controller.abort();
-		return controller;
-	}
-	signal?.addEventListener("abort", () => controller.abort(), { once: true });
-	return controller;
-}
-
-function createTimeoutController(
-	signal: AbortSignal | undefined,
-	timeoutMs: number,
-): { controller: AbortController; clear: () => void } {
-	const controller = createLinkedAbortController(signal);
-	const timeout = setTimeout(() => controller.abort(), timeoutMs);
-	return {
-		controller,
-		clear: () => clearTimeout(timeout),
-	};
 }
 
 function withProvider(

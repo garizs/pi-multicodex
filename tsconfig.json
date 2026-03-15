@@ -9,6 +9,7 @@
 		"skipLibCheck": true
 	},
 	"include": [
+		"abort-utils.ts",
 		"index.ts",
 		"index.test.ts",
 		"selection.ts",
