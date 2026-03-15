@@ -10,6 +10,7 @@ const mocks = vi.hoisted(() => ({
 	statusStartAutoRefresh: vi.fn(),
 	statusStopAutoRefresh: vi.fn(),
 	statusLoadPreferences: vi.fn().mockResolvedValue(undefined),
+	statusScheduleModelSelectRefresh: vi.fn(),
 }));
 
 vi.mock("./account-manager", () => ({
@@ -36,6 +37,7 @@ vi.mock("./status", () => ({
 	createUsageStatusController: () => ({
 		loadPreferences: mocks.statusLoadPreferences,
 		refreshFor: mocks.statusRefreshFor,
+		scheduleModelSelectRefresh: mocks.statusScheduleModelSelectRefresh,
 		startAutoRefresh: mocks.statusStartAutoRefresh,
 		stopAutoRefresh: mocks.statusStopAutoRefresh,
 	}),
@@ -54,6 +56,7 @@ describe("multicodexExtension", () => {
 		mocks.statusStartAutoRefresh.mockClear();
 		mocks.statusStopAutoRefresh.mockClear();
 		mocks.statusLoadPreferences.mockClear();
+		mocks.statusScheduleModelSelectRefresh.mockClear();
 	});
 
 	it("registers provider, commands, and lifecycle hooks", () => {
@@ -122,7 +125,8 @@ describe("multicodexExtension", () => {
 
 		turnEnd?.({}, ctx as never);
 		modelSelect?.({}, ctx as never);
-		expect(mocks.statusRefreshFor).toHaveBeenCalledTimes(5);
+		expect(mocks.statusRefreshFor).toHaveBeenCalledTimes(4);
+		expect(mocks.statusScheduleModelSelectRefresh).toHaveBeenCalledWith(ctx);
 
 		sessionShutdown?.({}, ctx as never);
 		expect(mocks.statusStopAutoRefresh).toHaveBeenCalledWith(ctx);

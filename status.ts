@@ -21,6 +21,7 @@ const STATUS_KEY = "multicodex-usage";
 const SETTINGS_KEY = "pi-multicodex";
 const SETTINGS_FILE = path.join(os.homedir(), ".pi", "agent", "settings.json");
 const REFRESH_INTERVAL_MS = 60_000;
+const MODEL_SELECT_REFRESH_DEBOUNCE_MS = 250;
 const UNKNOWN_PERCENT = "--";
 const FIVE_HOUR_LABEL = "5h:";
 const SEVEN_DAY_LABEL = "7d:";
@@ -172,6 +173,40 @@ function formatResetCountdown(resetAt: number | undefined): string | undefined {
 	return `${seconds}s`;
 }
 
+function shouldShowReset(
+	preferences: FooterPreferences,
+	window: Exclude<ResetWindowMode, "both">,
+): boolean {
+	if (!preferences.showReset) return false;
+	return (
+		preferences.resetWindow === "both" || preferences.resetWindow === window
+	);
+}
+
+function formatUsageSegment(
+	ctx: ExtensionContext,
+	label: string,
+	usedPercent: number | undefined,
+	resetAt: number | undefined,
+	showReset: boolean,
+	preferences: FooterPreferences,
+): string {
+	const parts = [
+		`${ctx.ui.theme.fg("dim", label)}${formatPercent(
+			ctx,
+			usedToDisplayPercent(usedPercent, preferences.usageMode),
+			preferences.usageMode,
+		)}`,
+	];
+	if (showReset) {
+		const countdown = formatResetCountdown(resetAt);
+		if (countdown) {
+			parts.push(ctx.ui.theme.fg("dim", `(↺${countdown})`));
+		}
+	}
+	return parts.join(" ");
+}
+
 export function isManagedModel(model: MaybeModel): boolean {
 	return model?.provider === PROVIDER_ID;
 }
@@ -195,41 +230,22 @@ export function formatActiveAccountStatus(
 			.join(" ");
 	}
 
-	const fiveHour = `${ctx.ui.theme.fg("dim", FIVE_HOUR_LABEL)}${formatPercent(
+	const fiveHour = formatUsageSegment(
 		ctx,
-		usedToDisplayPercent(usage.primary?.usedPercent, preferences.usageMode),
-		preferences.usageMode,
-	)}`;
-	const sevenDay = `${ctx.ui.theme.fg("dim", SEVEN_DAY_LABEL)}${formatPercent(
+		FIVE_HOUR_LABEL,
+		usage.primary?.usedPercent,
+		usage.primary?.resetAt,
+		shouldShowReset(preferences, "5h"),
+		preferences,
+	);
+	const sevenDay = formatUsageSegment(
 		ctx,
-		usedToDisplayPercent(usage.secondary?.usedPercent, preferences.usageMode),
-		preferences.usageMode,
-	)}`;
-	const fiveHourReset = preferences.showReset
-		? formatResetCountdown(usage.primary?.resetAt)
-		: undefined;
-	const sevenDayReset = preferences.showReset
-		? formatResetCountdown(usage.secondary?.resetAt)
-		: undefined;
-	const resetText =
-		preferences.resetWindow === "5h"
-			? fiveHourReset
-				? ctx.ui.theme.fg("dim", `(${FIVE_HOUR_LABEL}↺${fiveHourReset})`)
-				: undefined
-			: preferences.resetWindow === "7d"
-				? sevenDayReset
-					? ctx.ui.theme.fg("dim", `(${SEVEN_DAY_LABEL}↺${sevenDayReset})`)
-					: undefined
-				: [
-						fiveHourReset
-							? ctx.ui.theme.fg("dim", `(${FIVE_HOUR_LABEL}↺${fiveHourReset})`)
-							: undefined,
-						sevenDayReset
-							? ctx.ui.theme.fg("dim", `(${SEVEN_DAY_LABEL}↺${sevenDayReset})`)
-							: undefined,
-					]
-						.filter(Boolean)
-						.join(" ") || undefined;
+		SEVEN_DAY_LABEL,
+		usage.secondary?.usedPercent,
+		usage.secondary?.resetAt,
+		shouldShowReset(preferences, "7d"),
+		preferences,
+	);
 
 	const leading =
 		preferences.order === "account-first"
@@ -238,7 +254,7 @@ export function formatActiveAccountStatus(
 	const trailing =
 		preferences.order === "account-first" ? [] : [accountText].filter(Boolean);
 
-	return [...leading, fiveHour, sevenDay, resetText, ...trailing]
+	return [...leading, fiveHour, sevenDay, ...trailing]
 		.filter(Boolean)
 		.join(" ");
 }
@@ -315,10 +331,17 @@ function applyPreferenceChange(
 
 export function createUsageStatusController(accountManager: AccountManager) {
 	let refreshTimer: ReturnType<typeof setInterval> | undefined;
+	let modelSelectTimer: ReturnType<typeof setTimeout> | undefined;
 	let activeContext: ExtensionContext | undefined;
 	let refreshInFlight = false;
 	let queuedRefresh = false;
 	let preferences: FooterPreferences = DEFAULT_PREFERENCES;
+	let livePreviewPreferences: FooterPreferences | undefined;
+
+	accountManager.onStateChange(() => {
+		if (!activeContext) return;
+		renderCachedStatus(activeContext, livePreviewPreferences ?? preferences);
+	});
 
 	function clearStatus(ctx?: ExtensionContext): void {
 		ctx?.ui.setStatus(STATUS_KEY, undefined);
@@ -328,12 +351,50 @@ export function createUsageStatusController(accountManager: AccountManager) {
 		preferences = await loadFooterPreferences();
 	}
 
+	function getStatusText(
+		ctx: ExtensionContext,
+		preferencesOverride?: FooterPreferences,
+	): string | undefined {
+		if (!ctx.hasUI) return undefined;
+		if (!isManagedModel(ctx.model)) return undefined;
+
+		const activeAccount = accountManager.getActiveAccount();
+		if (!activeAccount) {
+			return ctx.ui.theme.fg("warning", "Multicodex no active account");
+		}
+
+		return formatActiveAccountStatus(
+			ctx,
+			activeAccount.email,
+			accountManager.getCachedUsage(activeAccount.email),
+			preferencesOverride ?? preferences,
+		);
+	}
+
+	function renderCachedStatus(
+		ctx: ExtensionContext,
+		preferencesOverride?: FooterPreferences,
+	): void {
+		if (!ctx.hasUI) return;
+		if (!isManagedModel(ctx.model)) {
+			clearStatus(ctx);
+			return;
+		}
+
+		const text = getStatusText(ctx, preferencesOverride);
+		if (text) {
+			ctx.ui.setStatus(STATUS_KEY, text);
+		}
+	}
+
 	async function updateStatus(ctx: ExtensionContext): Promise<void> {
 		if (!ctx.hasUI) return;
 		if (!isManagedModel(ctx.model)) {
 			clearStatus(ctx);
 			return;
 		}
+
+		renderCachedStatus(ctx, livePreviewPreferences ?? preferences);
 
 		let activeAccount = accountManager.getActiveAccount();
 		if (!activeAccount) {
@@ -354,7 +415,12 @@ export function createUsageStatusController(accountManager: AccountManager) {
 			cachedUsage;
 		ctx.ui.setStatus(
 			STATUS_KEY,
-			formatActiveAccountStatus(ctx, activeAccount.email, usage, preferences),
+			formatActiveAccountStatus(
+				ctx,
+				activeAccount.email,
+				usage,
+				livePreviewPreferences ?? preferences,
+			),
 		);
 	}
 
@@ -377,6 +443,19 @@ export function createUsageStatusController(accountManager: AccountManager) {
 		}
 	}
 
+	function scheduleModelSelectRefresh(ctx: ExtensionContext): void {
+		activeContext = ctx;
+		renderCachedStatus(ctx, livePreviewPreferences ?? preferences);
+		if (modelSelectTimer) {
+			clearTimeout(modelSelectTimer);
+		}
+		modelSelectTimer = setTimeout(() => {
+			modelSelectTimer = undefined;
+			void refreshFor(ctx);
+		}, MODEL_SELECT_REFRESH_DEBOUNCE_MS);
+		modelSelectTimer.unref?.();
+	}
+
 	function startAutoRefresh(): void {
 		if (refreshTimer) clearInterval(refreshTimer);
 		refreshTimer = setInterval(() => {
@@ -391,6 +470,11 @@ export function createUsageStatusController(accountManager: AccountManager) {
 			clearInterval(refreshTimer);
 			refreshTimer = undefined;
 		}
+		if (modelSelectTimer) {
+			clearTimeout(modelSelectTimer);
+			modelSelectTimer = undefined;
+		}
+		livePreviewPreferences = undefined;
 		clearStatus(ctx ?? activeContext);
 		activeContext = undefined;
 		queuedRefresh = false;
@@ -408,11 +492,23 @@ export function createUsageStatusController(accountManager: AccountManager) {
 		}
 	}
 
+	function renderPreviewLabel(
+		ctx: ExtensionContext,
+		theme: ExtensionCommandContext["ui"]["theme"],
+		draft: FooterPreferences,
+	): string {
+		const previewText =
+			getStatusText(ctx, draft) ?? ctx.ui.theme.fg("dim", "Codex loading...");
+		return `${theme.fg("dim", "Preview")}: ${previewText}`;
+	}
+
 	async function openPreferencesPanel(
 		ctx: ExtensionCommandContext,
 	): Promise<void> {
 		await loadPreferences(ctx);
 		let draft = preferences;
+		livePreviewPreferences = draft;
+		renderCachedStatus(ctx, livePreviewPreferences);
 
 		await ctx.ui.custom((_tui, theme, _kb, done) => {
 			const container = new Container();
@@ -429,14 +525,20 @@ export function createUsageStatusController(accountManager: AccountManager) {
 					0,
 				),
 			);
+			const previewText = new Text(renderPreviewLabel(ctx, theme, draft), 1, 0);
+			container.addChild(previewText);
 
 			const settingsList = new SettingsList(
 				createSettingsItems(draft),
-				7,
+				9,
 				getSettingsListTheme(),
 				(id: string, newValue: string) => {
 					draft = applyPreferenceChange(draft, id, newValue);
+					livePreviewPreferences = draft;
 					settingsList.updateValue(id, newValue);
+					previewText.setText(renderPreviewLabel(ctx, theme, draft));
+					container.invalidate();
+					renderCachedStatus(ctx, draft);
 				},
 				() => done(undefined),
 				{ enableSearch: true },
@@ -451,6 +553,7 @@ export function createUsageStatusController(accountManager: AccountManager) {
 		});
 
 		preferences = draft;
+		livePreviewPreferences = undefined;
 		await persistFooterPreferences(preferences);
 		await refreshFor(ctx);
 	}
@@ -459,6 +562,7 @@ export function createUsageStatusController(accountManager: AccountManager) {
 		loadPreferences,
 		openPreferencesPanel,
 		refreshFor,
+		scheduleModelSelectRefresh,
 		startAutoRefresh,
 		stopAutoRefresh,
 		getPreferences: () => preferences,

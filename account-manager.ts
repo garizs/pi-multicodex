@@ -18,6 +18,7 @@ const USAGE_REQUEST_TIMEOUT_MS = 10 * 1000;
 const QUOTA_COOLDOWN_MS = 60 * 60 * 1000;
 
 type WarningHandler = (message: string) => void;
+type StateChangeHandler = () => void;
 
 function getErrorMessage(error: unknown): string {
 	if (error instanceof Error) return error.message;
@@ -29,6 +30,7 @@ export class AccountManager {
 	private usageCache = new Map<string, CodexUsageSnapshot>();
 	private warningHandler?: WarningHandler;
 	private manualEmail?: string;
+	private stateChangeHandlers = new Set<StateChangeHandler>();
 
 	constructor() {
 		this.data = loadStorage();
@@ -36,6 +38,19 @@ export class AccountManager {
 
 	private save(): void {
 		saveStorage(this.data);
+	}
+
+	private notifyStateChanged(): void {
+		for (const handler of this.stateChangeHandlers) {
+			handler();
+		}
+	}
+
+	onStateChange(handler: StateChangeHandler): () => void {
+		this.stateChangeHandlers.add(handler);
+		return () => {
+			this.stateChangeHandlers.delete(handler);
+		};
 	}
 
 	getAccounts(): Account[] {
@@ -82,7 +97,6 @@ export class AccountManager {
 			});
 		}
 		this.setActiveAccount(email);
-		this.save();
 	}
 
 	getActiveAccount(): Account | undefined {
@@ -111,6 +125,7 @@ export class AccountManager {
 	setActiveAccount(email: string): void {
 		this.data.activeEmail = email;
 		this.save();
+		this.notifyStateChanged();
 	}
 
 	setManualAccount(email: string): void {
@@ -118,10 +133,13 @@ export class AccountManager {
 		if (!account) return;
 		this.manualEmail = email;
 		account.lastUsed = Date.now();
+		this.notifyStateChanged();
 	}
 
 	clearManualAccount(): void {
+		if (!this.manualEmail) return;
 		this.manualEmail = undefined;
+		this.notifyStateChanged();
 	}
 
 	getImportedAccount(): Account | undefined {
@@ -173,6 +191,7 @@ export class AccountManager {
 		if (account) {
 			account.quotaExhaustedUntil = until;
 			this.save();
+			this.notifyStateChanged();
 		}
 	}
 
@@ -201,6 +220,7 @@ export class AccountManager {
 				timeoutMs: USAGE_REQUEST_TIMEOUT_MS,
 			});
 			this.usageCache.set(account.email, usage);
+			this.notifyStateChanged();
 			return usage;
 		} catch (error) {
 			this.warningHandler?.(
@@ -283,6 +303,7 @@ export class AccountManager {
 		}
 		if (changed) {
 			this.save();
+			this.notifyStateChanged();
 		}
 	}
 
@@ -301,6 +322,7 @@ export class AccountManager {
 			account.accountId = accountId;
 		}
 		this.save();
+		this.notifyStateChanged();
 		return account.accessToken;
 	}
 }

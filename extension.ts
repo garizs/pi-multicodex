@@ -54,7 +54,7 @@ export default function multicodexExtension(pi: ExtensionAPI) {
 
 	pi.on("model_select", (_event: unknown, ctx: ExtensionContext) => {
 		lastContext = ctx;
-		void statusController.refreshFor(ctx);
+		statusController.scheduleModelSelectRefresh(ctx);
 	});
 
 	pi.on("session_shutdown", (_event: unknown, ctx: ExtensionContext) => {
