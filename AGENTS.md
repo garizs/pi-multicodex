@@ -32,6 +32,12 @@ Release validation:
 npm pack --dry-run
 ```
 
+Release workflow:
+
+- Prepare releases locally with `npm run release:prepare -- <version>`.
+- Normal releases are tag-driven through GitHub Actions trusted publishing.
+- Do not use local `npm publish` for routine releases.
+
 ## Commit Workflow
 
 - Do not batch unrelated changes into a single large commit.

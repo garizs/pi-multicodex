@@ -46,11 +46,10 @@ npm pack --dry-run
 
 Target release flow:
 
-1. Update `package.json` version.
-2. Run release validation.
-3. Commit the release.
-4. Create and push a matching `v*` tag.
-5. Let GitHub Actions publish through trusted publishing.
+1. Prepare the release locally with `npm run release:prepare -- <version>`.
+2. Commit the prepared version bump.
+3. Create and push a matching `v*` tag.
+4. Let GitHub Actions publish through trusted publishing.
 
 ## Completed foundation work
 

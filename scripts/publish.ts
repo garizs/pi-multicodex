@@ -3,15 +3,15 @@
 import path from "node:path";
 import { $ } from "bun";
 
-class PublishError extends Error {
+class ReleaseError extends Error {
 	constructor(message: string) {
 		super(message);
-		this.name = "PublishError";
+		this.name = "ReleaseError";
 	}
 }
 
 function fail(message: string): never {
-	throw new PublishError(message);
+	throw new ReleaseError(message);
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -44,15 +44,9 @@ async function writePackageJson(pkg: Record<string, unknown>): Promise<void> {
 }
 
 function normalizeVersionArg(arg: string | undefined): string | undefined {
-	if (!arg) {
-		return undefined;
-	}
-
+	if (!arg) return undefined;
 	const trimmed = arg.trim();
-	if (!trimmed) {
-		return undefined;
-	}
-
+	if (!trimmed) return undefined;
 	return trimmed.startsWith("v") ? trimmed.slice(1) : trimmed;
 }
 
@@ -63,7 +57,6 @@ function incrementPatchVersion(version: string): string {
 			`automatic patch bump only supports x.y.z versions, received ${version}`,
 		);
 	}
-
 	const [, major, minor, patch] = match;
 	return `${major}.${minor}.${Number.parseInt(patch, 10) + 1}`;
 }
@@ -73,7 +66,6 @@ async function isCleanGit(): Promise<boolean> {
 	if (result.exitCode !== 0) {
 		return true;
 	}
-
 	return result.stdout.toString().trim().length === 0;
 }
 
@@ -84,22 +76,28 @@ async function npmVersionExists(
 	const result = await $`npm view ${`${pkgName}@${version}`} version --json`
 		.quiet()
 		.nothrow();
-
 	if (result.exitCode === 0) {
 		return true;
 	}
-
 	const stderr = result.stderr.toString();
 	if (stderr.includes("E404") || stderr.includes("404 Not Found")) {
 		return false;
 	}
-
 	fail(`failed to query npm for ${pkgName}@${version}`);
 }
 
 async function restorePackageVersion(version: string): Promise<void> {
 	const pkg = await readPackageJson();
 	await writePackageJson({ ...pkg, version });
+}
+
+async function runChecks(): Promise<void> {
+	console.log("[release] running checks (lint, tsgo, test)");
+	await $`npm run lint`;
+	await $`npm run tsgo`;
+	await $`npm run test`;
+	console.log("[release] npm pack --dry-run");
+	await $`npm pack --dry-run`;
 }
 
 async function main(): Promise<void> {
@@ -120,9 +118,9 @@ async function main(): Promise<void> {
 	const shouldWriteVersion = targetVersion !== currentVersion;
 	let shouldRestoreVersion = false;
 
-	console.log(`[publish] package: ${packageName}`);
-	console.log(`[publish] current version (package.json): ${currentVersion}`);
-	console.log(`[publish] target version: ${targetVersion}`);
+	console.log(`[release] package: ${packageName}`);
+	console.log(`[release] current version (package.json): ${currentVersion}`);
+	console.log(`[release] target version: ${targetVersion}`);
 
 	if (await npmVersionExists(packageName, targetVersion)) {
 		fail(`version ${targetVersion} already exists on npm for ${packageName}`);
@@ -131,38 +129,31 @@ async function main(): Promise<void> {
 	try {
 		if (shouldWriteVersion) {
 			await writePackageJson({ ...originalPkg, version: targetVersion });
-			console.log(`[publish] wrote package.json version ${targetVersion}`);
+			console.log(`[release] wrote package.json version ${targetVersion}`);
 		}
 
-		console.log("[publish] running checks (lint, tsgo, test)");
-		await $`npm run lint`;
-		await $`npm run tsgo`;
-		await $`npm run test`;
+		await runChecks();
 
-		console.log("[publish] npm pack --dry-run");
-		await $`npm pack --dry-run`;
+		console.log("\n[release] local release preparation complete.");
+		console.log("[release] next steps:");
+		console.log("  git add package.json");
+		console.log(`  git commit -m "release: v${targetVersion}"`);
+		console.log(`  git tag v${targetVersion}`);
+		console.log("  git push origin main --tags");
+		console.log(
+			"  wait for GitHub Actions trusted publishing to publish the tag",
+		);
 
 		if (dryRun) {
 			shouldRestoreVersion = shouldWriteVersion;
-			console.log("[publish] npm publish --dry-run");
-			await $`npm publish --dry-run --access public`;
-			console.log("\n[publish] dry-run complete. No publish happened.");
-			return;
+			console.log(
+				"\n[release] dry-run complete. Version bump will be reverted.",
+			);
 		}
-
-		console.log("[publish] publishing to npm");
-		await $`npm publish --access public`;
-
-		console.log("\n[publish] published successfully.");
-		console.log("[publish] next steps (recommended):");
-		console.log(`  git add package.json`);
-		console.log(`  git commit -m "release: v${targetVersion}"`);
-		console.log(`  git tag v${targetVersion}`);
-		console.log("  git push --follow-tags");
 	} finally {
 		if (shouldRestoreVersion) {
 			await restorePackageVersion(currentVersion);
-			console.log(`[publish] restored package.json version ${currentVersion}`);
+			console.log(`[release] restored package.json version ${currentVersion}`);
 		}
 	}
 }
@@ -170,10 +161,9 @@ async function main(): Promise<void> {
 try {
 	await main();
 } catch (error) {
-	if (error instanceof PublishError) {
-		console.error(`\n[publish] ${error.message}`);
+	if (error instanceof ReleaseError) {
+		console.error(`\n[release] ${error.message}`);
 		process.exit(1);
 	}
-
 	throw error;
 }

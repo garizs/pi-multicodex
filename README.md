@@ -79,18 +79,27 @@ npm pack --dry-run
 
 Release flow:
 
-1. Update `package.json` version.
-2. Run release checks.
-3. Commit the release.
-4. Create and push a matching `v*` tag.
-5. Let GitHub Actions publish through trusted publishing.
+1. Prepare the release locally.
+2. Commit the version bump.
+3. Create and push a matching `v*` tag.
+4. Let GitHub Actions publish through trusted publishing.
+
+Prepare locally:
+
+```bash
+npm run release:prepare -- <version>
+```
 
 Example:
 
 ```bash
+git add package.json
+git commit -m "release: v<version>"
 git tag v<version>
 git push origin main --tags
 ```
+
+Do not use local `npm publish` for normal releases in this repo.
 
 ## Acknowledgment
 
