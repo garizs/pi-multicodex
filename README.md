@@ -69,11 +69,10 @@ Current direction:
 
 Current next step:
 
-- make MultiCodex own the normal `openai-codex` path directly
-- auto-import pi's existing `openai-codex` auth when it is new or changed
 - mirror the existing codex usage footer style, including support for displaying both reset countdowns
-- show the active account identifier beside the 5h and 7d usage metrics
-- keep footer configuration in an interactive panel
+- debounce expensive refresh work during rapid model cycling
+- move each reset countdown next to its matching usage period
+- add live preview to the `/multicodex-footer` panel before locking the final style
 - tighten footer updates so account switches and quota rotation are reflected immediately
 
 ## Release validation

@@ -33,6 +33,8 @@ The roadmap is centered on:
 - **Primary release path:** npmjs with trusted publishing
 - **Current storage filename:** `codex-accounts.json`
 - **Local state path:** `~/.pi/agent/codex-accounts.json`
+- **Provider strategy:** own the normal `openai-codex` path directly
+- **Auth strategy:** auto-import pi's stored `openai-codex` auth when it is new or changed
 
 ## Release discipline
 
@@ -50,59 +52,20 @@ Target release flow:
 3. Create and push a matching `v*` tag.
 4. Let GitHub Actions publish through trusted publishing.
 
-## Completed foundation work
+## Current milestone — active-account usage visibility polish
 
-### Storage identity
+Goal: finish the Codex footer so it feels like the built-in usage experience rather than an add-on.
 
-Completed:
+Remaining work:
 
-- [x] Use `~/.pi/agent/codex-accounts.json`
-- [x] Keep the on-disk format as JSON for now
-- [x] Document the storage path in the repo docs
-- [x] Avoid adding custom encryption
-
-### Internal modularization
-
-Completed:
-
-- [x] Thin `index.ts` into a public export surface
-- [x] Split account management into focused modules
-- [x] Split provider, stream wrapper, command, hook, storage, usage, and browser helpers
-- [x] Keep behavior stable during refactoring
-
-### Baseline test coverage
-
-Completed:
-
-- [x] Cover usage parsing and reset helpers
-- [x] Cover account selection behavior
-- [x] Cover manual-account stream-wrapper behavior
-- [x] Cover extension wiring and hook routing
-- [x] Run all tests through Vitest with `*.test.ts`
-
-## Next milestone — active-account usage visibility
-
-Goal: surface usage information for the currently active account directly in pi.
-
-Planned work:
-
-- [ ] Integrate the ideas or code path from `calesennett/pi-codex-usage`
-- [ ] Override the normal `openai-codex` path instead of requiring a separate provider to be selected manually
-- [ ] Auto-import pi's stored `openai-codex` auth when it is new or changed
-- [ ] Ensure the usage shown belongs to the currently selected active account
-- [ ] Display the logged-in account identifier beside the usage metrics
-- [ ] Add an interactive configuration panel for footer fields, reset countdown selection, and ordering
-- [ ] Reuse or adapt a refresh model that stays responsive without excessive polling
-
-Implementation next steps:
-
-1. Override `openai-codex` with the MultiCodex-managed stream wrapper.
-2. Import pi's stored `openai-codex` auth into managed account storage when it changes.
-3. Treat `/multicodex-use [identifier]` as the select-or-login entrypoint.
-4. Render the footer for normal Codex usage and show the active managed account beside 5h and 7d usage.
-5. Add an interactive footer settings panel for account visibility, 5h/7d/both reset countdown selection, usage mode, and field ordering.
-6. Refresh on session start, session switch, model change, turn end, manual account change, and low-frequency timer ticks.
-7. Add tests for auth import, provider override behavior, status formatting, cached-usage fallback, and extension event wiring.
+- [ ] Integrate the last layout and refresh ideas from `calesennett/pi-codex-usage`
+- [ ] Debounce model-change refresh work so rapid `Ctrl+P` cycling never blocks on auth sync or usage fetches
+- [ ] Render each reset countdown next to its matching usage period
+- [ ] Add live preview inside the `/multicodex-footer` panel
+- [ ] Update the actual footer while footer settings change in the panel
+- [ ] Tune the footer color palette before locking the final style
+- [ ] Tighten footer updates so account switches and quota rotation are reflected immediately
+- [ ] Add tests for live preview updates, model-switch debouncing, and footer/account synchronization
 
 ## Follow-up milestone — behavior contract
 
@@ -122,8 +85,6 @@ Goal: make account rotation behavior explicit and documented.
 
 Goal: improve everyday usability for multi-account management.
 
-- [ ] Review whether commands should stay unchanged or gain a top-level management command
-- [ ] Improve account picker and status dialogs
 - [ ] Improve the `/multicodex-use` account picker and select-or-login flow
 - [ ] Improve the status output for account state, cooldowns, and manual selection
 - [ ] Make active-account information easier to understand during a session
