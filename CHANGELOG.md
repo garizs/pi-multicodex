@@ -1,3 +1,13 @@
+# [2.0.0](https://github.com/victor-founder/pi-multicodex/compare/v1.1.0...v2.0.0) (2026-03-15)
+
+
+* feat!: migrate to /multicodex command family ([cd26f76](https://github.com/victor-founder/pi-multicodex/commit/cd26f76aff311a5b436e45b72d437d3a0e58a7ca))
+
+
+### BREAKING CHANGES
+
+* removed old multicodex top-level commands; use /multicodex subcommands.
+
 # [1.1.0](https://github.com/victor-founder/pi-multicodex/compare/v1.0.11...v1.1.0) (2026-03-15)
 
 
