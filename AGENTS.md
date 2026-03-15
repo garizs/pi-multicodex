@@ -93,11 +93,16 @@ npm pack --dry-run
 
 ## Release workflow
 
-- Prepare releases locally with `npm run release:prepare -- <version>`.
-- The release helper should prefer Bun package-manager commands for version updates.
-- Normal releases are tag-driven through GitHub Actions trusted publishing.
+- Use `semantic-release` with npm trusted publishing.
+- Normal releases happen from merges to `main` through `.github/workflows/publish.yml`.
+- Enforce Conventional Commits with commitlint locally and in CI.
+- Use `lefthook` for the local `commit-msg` hook.
+- Use `pnpm release:dry` for local release verification when needed.
 - Do not use local `npm publish` for routine releases.
-- Before pushing a release tag, make sure the working tree is clean and the local validations pass.
+- Keep the npm trusted publisher mapping aligned with:
+  - package: `@victor-software-house/pi-multicodex`
+  - repository: `victor-founder/pi-multicodex`
+  - workflow file: `.github/workflows/publish.yml`
 
 ## Commit Workflow
 

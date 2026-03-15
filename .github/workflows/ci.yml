@@ -1,22 +1,17 @@
-name: Release
+name: CI
 
 on:
   push:
     branches:
       - main
-  workflow_dispatch:
+  pull_request:
 
 permissions:
   contents: read
 
 jobs:
-  release:
+  validate:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      issues: write
-      pull-requests: write
-      id-token: write
 
     steps:
       - name: Check out repository
@@ -34,7 +29,6 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: lts/*
-          registry-url: https://registry.npmjs.org
           cache: pnpm
 
       - name: Install dependencies
@@ -43,10 +37,15 @@ jobs:
       - name: Compute commitlint range
         id: range
         run: |
-          FROM="${{ github.event.before }}"
-          TO="${{ github.sha }}"
-          if [ "$FROM" = "0000000000000000000000000000000000000000" ]; then
-            FROM=$(git rev-list --max-parents=0 HEAD | tail -n 1)
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            FROM="${{ github.event.pull_request.base.sha }}"
+            TO="${{ github.event.pull_request.head.sha }}"
+          else
+            FROM="${{ github.event.before }}"
+            TO="${{ github.sha }}"
+            if [ "$FROM" = "0000000000000000000000000000000000000000" ]; then
+              FROM=$(git rev-list --max-parents=0 HEAD | tail -n 1)
+            fi
           fi
           echo "from=$FROM" >> "$GITHUB_OUTPUT"
           echo "to=$TO" >> "$GITHUB_OUTPUT"
@@ -54,13 +53,8 @@ jobs:
       - name: Lint commit messages
         run: pnpm exec commitlint --from "${{ steps.range.outputs.from }}" --to "${{ steps.range.outputs.to }}" --verbose
 
-      - name: Run release checks
+      - name: Run checks
         run: pnpm check
 
       - name: Verify package contents
         run: npm pack --dry-run
-
-      - name: Release
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: pnpm exec semantic-release

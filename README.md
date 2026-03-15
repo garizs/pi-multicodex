@@ -132,38 +132,52 @@ pnpm check
 npm pack --dry-run
 ```
 
-Release flow:
+## Release process
 
-1. Prepare the release locally.
-2. Commit the version bump.
-3. Create and push a matching `v*` tag.
-4. Let GitHub Actions publish through trusted publishing.
+This repository uses `semantic-release` with npm trusted publishing.
+
+Maintainer flow:
+
+1. Write Conventional Commits.
+2. The local `commit-msg` hook validates commit messages with Lefthook + commitlint.
+3. CI validates commit messages again and runs release checks.
+4. Merge to `main`.
+5. GitHub Actions runs `semantic-release` from `.github/workflows/publish.yml`.
+6. `semantic-release` computes the next version, creates the git tag and GitHub release, updates `package.json` and `CHANGELOG.md`, and publishes to npm through trusted publishing.
+
+Local verification:
+
+```bash
+pnpm check
+npm pack --dry-run
+pnpm release:dry
+```
 
 Local push protection:
 
 - `lefthook` runs `mise run pre-push`
-- the `pre-push` mise task runs the same core validations as the publish workflow:
+- the `pre-push` mise task runs the same core validations as CI:
   - `pnpm check`
   - `npm pack --dry-run`
 
-Prepare locally:
-
-```bash
-npm run release:prepare -- <version>
-```
-
-The helper updates `package.json` with `bun pm pkg set` and then runs the release checks.
-
-Example:
-
-```bash
-git add package.json
-git commit -m "release: v<version>"
-git tag v<version>
-git push origin main --tags
-```
-
 Do not use local `npm publish` for normal releases in this repo.
+
+## npm trusted publishing setup
+
+npm-side setup is required in addition to the workflow.
+
+Trusted publisher mapping:
+
+- package: `@victor-software-house/pi-multicodex`
+- repository: `victor-founder/pi-multicodex`
+- workflow file: `.github/workflows/publish.yml`
+
+Useful commands:
+
+```bash
+npm trust list @victor-software-house/pi-multicodex
+script -q /dev/null bash -lc 'npm trust github @victor-software-house/pi-multicodex --repository victor-founder/pi-multicodex --file publish.yml --yes'
+```
 
 ## Acknowledgment
 
