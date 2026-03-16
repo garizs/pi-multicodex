@@ -18,7 +18,7 @@
 		"extensions": [
 			"./index.ts"
 		],
-		"image": "https://raw.githubusercontent.com/victor-software-house/pi-multicodex/main/assets/multicodex.png"
+		"image": "https://raw.githubusercontent.com/victor-software-house/pi-multicodex/main/assets/multicodex-main.png"
 	},
 	"repository": {
 		"type": "git",

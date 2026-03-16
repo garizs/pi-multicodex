@@ -1,6 +1,6 @@
 # @victor-software-house/pi-multicodex
 
-![MultiCodex main panel](./assets/screenshots/multicodex-main.png)
+![MultiCodex main panel](./assets/multicodex-main.png)
 
 MultiCodex is a [pi](https://github.com/badlogic/pi-mono) extension that manages multiple ChatGPT Codex accounts and rotates between them automatically when you hit quota limits.
 
@@ -54,14 +54,14 @@ Commands that do not need a UI panel (`show`, `verify`, `path`, `reset`, `help`)
 
 The `/multicodex use` picker lets you select, add, and remove accounts in one place.
 
-![MultiCodex use picker](./assets/screenshots/multicodex-use-picker.png)
+![MultiCodex use picker](./assets/multicodex-use-picker.png)
 
 - **Enter** activates the highlighted account.
 - **Backspace** removes it (after confirmation).
 
 When you remove an active account, MultiCodex switches to the next available one automatically.
 
-![MultiCodex remove account confirmation](./assets/screenshots/multicodex-remove-confirm.png)
+![MultiCodex remove account confirmation](./assets/multicodex-remove-confirm.png)
 
 ## Usage footer
 
@@ -69,7 +69,7 @@ MultiCodex adds a live footer to your session showing the active account, 5-hour
 
 You can customize which fields appear and their ordering with `/multicodex footer`.
 
-![MultiCodex footer settings](./assets/screenshots/multicodex-footer-settings.png)
+![MultiCodex footer settings](./assets/multicodex-footer-settings.png)
 
 ## What it does under the hood
 

@@ -10,7 +10,7 @@ from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont
 
-OUTPUT_DIR = Path("assets/screenshots")
+OUTPUT_DIR = Path("assets")
 
 # Palette aligned to your control-sequence samples + current iTerm2 profile.
 # iTerm2 Default profile background: #141414 (20, 20, 20)
