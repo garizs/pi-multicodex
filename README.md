@@ -78,6 +78,7 @@ You can customize which fields appear and their ordering with `/multicodex foote
 - **Token refresh.** OAuth tokens are refreshed before expiry so requests do not fail due to stale credentials.
 - **Usage tracking.** Usage data is fetched from the Codex API and cached for 5 minutes per account. The footer renders cached data immediately and refreshes in the background.
 - **Quota cooldown.** When an account is exhausted, it stays on cooldown until its next known reset time (or 1 hour if the reset time is unknown).
+- **Shared utility seams.** Provider mirroring, stream primitives, and `~/.pi/agent/*` path helpers are shared with `pi-credential-vault` through `@victor-software-house/pi-provider-utils`. MultiCodex still owns account storage, token policy, footer behavior, and command UX.
 
 ## Local development
 
