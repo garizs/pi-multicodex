@@ -1,6 +1,5 @@
 import {
 	type Api,
-	type AssistantMessage,
 	type AssistantMessageEvent,
 	type AssistantMessageEventStream,
 	type Context,
@@ -8,7 +7,12 @@ import {
 	type Model,
 	type SimpleStreamOptions,
 } from "@mariozechner/pi-ai";
-import { createLinkedAbortController } from "./abort-utils";
+import {
+	createErrorAssistantMessage,
+	createLinkedAbortController,
+	normalizeUnknownError,
+	rewriteProviderOnEvent,
+} from "@victor-software-house/pi-provider-utils/streams";
 import type { AccountManager } from "./account-manager";
 import { isQuotaErrorMessage } from "./quota";
 
@@ -21,51 +25,6 @@ type ApiProviderRef = {
 		options?: SimpleStreamOptions,
 	) => AssistantMessageEventStream;
 };
-
-function withProvider(
-	event: AssistantMessageEvent,
-	provider: string,
-): AssistantMessageEvent {
-	if ("partial" in event) {
-		return { ...event, partial: { ...event.partial, provider } };
-	}
-	if (event.type === "done") {
-		return { ...event, message: { ...event.message, provider } };
-	}
-	if (event.type === "error") {
-		return { ...event, error: { ...event.error, provider } };
-	}
-	return event;
-}
-
-function createErrorAssistantMessage(
-	model: Model<Api>,
-	message: string,
-): AssistantMessage {
-	return {
-		role: "assistant",
-		content: [],
-		api: model.api,
-		provider: model.provider,
-		model: model.id,
-		usage: {
-			input: 0,
-			output: 0,
-			cacheRead: 0,
-			cacheWrite: 0,
-			totalTokens: 0,
-			cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-		},
-		stopReason: "error",
-		errorMessage: message,
-		timestamp: Date.now(),
-	};
-}
-
-function getErrorMessage(error: unknown): string {
-	if (error instanceof Error) return error.message;
-	return typeof error === "string" ? error : JSON.stringify(error);
-}
 
 export function createStreamWrapper(
 	accountManager: AccountManager,
@@ -151,13 +110,13 @@ export function createStreamWrapper(
 								break;
 							}
 
-							stream.push(withProvider(event, model.provider));
+							stream.push(rewriteProviderOnEvent(event, model.provider));
 							stream.end();
 							return;
 						}
 
 						forwardedAny = true;
-						stream.push(withProvider(event, model.provider));
+						stream.push(rewriteProviderOnEvent(event, model.provider));
 
 						if (event.type === "done") {
 							stream.end();
@@ -173,7 +132,7 @@ export function createStreamWrapper(
 					return;
 				}
 			} catch (error) {
-				const message = getErrorMessage(error);
+				const message = normalizeUnknownError(error);
 				const errorEvent: AssistantMessageEvent = {
 					type: "error",
 					reason: "error",
@@ -182,7 +141,7 @@ export function createStreamWrapper(
 						`Multicodex failed: ${message}`,
 					),
 				};
-				stream.push(withProvider(errorEvent, model.provider));
+				stream.push(rewriteProviderOnEvent(errorEvent, model.provider));
 				stream.end();
 			}
 		})();

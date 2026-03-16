@@ -61,7 +61,8 @@
 	"peerDependencies": {
 		"@mariozechner/pi-ai": "*",
 		"@mariozechner/pi-coding-agent": "*",
-		"@mariozechner/pi-tui": "*"
+		"@mariozechner/pi-tui": "*",
+		"@victor-software-house/pi-provider-utils": "*"
 	},
 	"peerDependenciesMeta": {
 		"@mariozechner/pi-ai": {
@@ -89,6 +90,7 @@
 		"@semantic-release/release-notes-generator": "^14.1.0",
 		"@types/node": "^25.5.0",
 		"@typescript/native-preview": "7.0.0-dev.20260314.1",
+		"@victor-software-house/pi-provider-utils": "link:../pi-provider-utils",
 		"semantic-release": "^25.0.3",
 		"typescript": "^5.9.3",
 		"vitest": "^4.1.0"

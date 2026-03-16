@@ -1,9 +1,8 @@
 import { promises as fs } from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import type { OAuthCredentials } from "@mariozechner/pi-ai/oauth";
+import { getAgentAuthPath } from "@victor-software-house/pi-provider-utils/agent-paths";
 
-const AUTH_FILE = path.join(os.homedir(), ".pi", "agent", "auth.json");
+const AUTH_FILE = getAgentAuthPath();
 const IMPORTED_ACCOUNT_PREFIX = "OpenAI Codex";
 
 interface AuthEntry {

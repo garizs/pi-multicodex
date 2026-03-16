@@ -1,5 +1,4 @@
 import { promises as fs, constants as fsConstants } from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import { loginOpenAICodex } from "@mariozechner/pi-ai/oauth";
 import type {
@@ -15,13 +14,14 @@ import {
 	SelectList,
 	Text,
 } from "@mariozechner/pi-tui";
+import { getAgentSettingsPath } from "@victor-software-house/pi-provider-utils/agent-paths";
 import type { AccountManager } from "./account-manager";
 import { openLoginInBrowser } from "./browser";
 import type { createUsageStatusController } from "./status";
 import { STORAGE_FILE } from "./storage";
 import { formatResetAt, isUsageUntouched } from "./usage";
 
-const SETTINGS_FILE = path.join(os.homedir(), ".pi", "agent", "settings.json");
+const SETTINGS_FILE = getAgentSettingsPath();
 const NO_ACCOUNTS_MESSAGE =
 	"No managed accounts found. Use /multicodex use <identifier> first.";
 const HELP_TEXT =

@@ -1,6 +1,3 @@
-import { promises as fs } from "node:fs";
-import os from "node:os";
-import path from "node:path";
 import type { Api, Model } from "@mariozechner/pi-ai";
 import type {
 	ExtensionCommandContext,
@@ -13,13 +10,18 @@ import {
 	SettingsList,
 	Text,
 } from "@mariozechner/pi-tui";
+import {
+	getAgentSettingsPath,
+	readJsonObjectFileAsync,
+	writeJsonObjectFileAsync,
+} from "@victor-software-house/pi-provider-utils/agent-paths";
 import type { AccountManager } from "./account-manager";
 import { PROVIDER_ID } from "./provider";
 import type { CodexUsageSnapshot } from "./usage";
 
 const STATUS_KEY = "multicodex-usage";
 const SETTINGS_KEY = "pi-multicodex";
-const SETTINGS_FILE = path.join(os.homedir(), ".pi", "agent", "settings.json");
+const SETTINGS_FILE = getAgentSettingsPath();
 const REFRESH_INTERVAL_MS = 60_000;
 const MODEL_SELECT_REFRESH_DEBOUNCE_MS = 250;
 const UNKNOWN_PERCENT = "--";
@@ -90,26 +92,13 @@ function normalizePreferences(value: unknown): FooterPreferences {
 }
 
 async function readSettingsFile(): Promise<Record<string, unknown>> {
-	try {
-		const raw = await fs.readFile(SETTINGS_FILE, "utf8");
-		const parsed = JSON.parse(raw) as unknown;
-		return asObject(parsed) ?? {};
-	} catch (error) {
-		const withCode = error as Error & { code?: string };
-		if (withCode.code === "ENOENT") return {};
-		throw error;
-	}
+	return readJsonObjectFileAsync(SETTINGS_FILE);
 }
 
 async function writeSettingsFile(
 	settings: Record<string, unknown>,
 ): Promise<void> {
-	await fs.mkdir(path.dirname(SETTINGS_FILE), { recursive: true });
-	await fs.writeFile(
-		SETTINGS_FILE,
-		`${JSON.stringify(settings, null, 2)}\n`,
-		"utf8",
-	);
+	await writeJsonObjectFileAsync(SETTINGS_FILE, settings);
 }
 
 export async function loadFooterPreferences(): Promise<FooterPreferences> {

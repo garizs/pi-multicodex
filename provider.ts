@@ -1,12 +1,5 @@
-import {
-	type Api,
-	type AssistantMessageEventStream,
-	type Context,
-	getApiProvider,
-	getModels,
-	type Model,
-	type SimpleStreamOptions,
-} from "@mariozechner/pi-ai";
+import { getApiProvider } from "@mariozechner/pi-ai";
+import { mirrorProvider } from "@victor-software-house/pi-provider-utils/providers";
 import type { AccountManager } from "./account-manager";
 import { createStreamWrapper } from "./stream-wrapper";
 
@@ -31,32 +24,25 @@ export function getOpenAICodexMirror(): {
 	baseUrl: string;
 	models: ProviderModelDef[];
 } {
-	const sourceModels = getModels("openai-codex");
+	const mirror = mirrorProvider("openai-codex");
+	if (!mirror) {
+		return { baseUrl: "https://chatgpt.com/backend-api", models: [] };
+	}
 	return {
-		baseUrl: sourceModels[0]?.baseUrl || "https://chatgpt.com/backend-api",
-		models: sourceModels.map((model) => ({
-			id: model.id,
-			name: model.name,
-			reasoning: model.reasoning,
-			input: model.input,
-			cost: model.cost,
-			contextWindow: model.contextWindow,
-			maxTokens: model.maxTokens,
+		baseUrl: mirror.baseUrl,
+		models: mirror.models.map((m) => ({
+			id: m.id,
+			name: m.name,
+			reasoning: m.reasoning,
+			input: [...m.input],
+			cost: { ...m.cost },
+			contextWindow: m.contextWindow,
+			maxTokens: m.maxTokens,
 		})),
 	};
 }
 
-export function buildMulticodexProviderConfig(accountManager: AccountManager): {
-	baseUrl: string;
-	apiKey: string;
-	api: "openai-codex-responses";
-	streamSimple: (
-		model: Model<Api>,
-		context: Context,
-		options?: SimpleStreamOptions,
-	) => AssistantMessageEventStream;
-	models: ProviderModelDef[];
-} {
+export function buildMulticodexProviderConfig(accountManager: AccountManager) {
 	const mirror = getOpenAICodexMirror();
 	const baseProvider = getApiProvider("openai-codex-responses");
 	if (!baseProvider) {
@@ -68,7 +54,7 @@ export function buildMulticodexProviderConfig(accountManager: AccountManager): {
 	return {
 		baseUrl: mirror.baseUrl,
 		apiKey: "managed-by-extension",
-		api: "openai-codex-responses",
+		api: "openai-codex-responses" as const,
 		streamSimple: createStreamWrapper(accountManager, baseProvider),
 		models: mirror.models,
 	};
