@@ -1,3 +1,10 @@
+## [2.0.10](https://github.com/victor-software-house/pi-multicodex/compare/v2.0.9...v2.0.10) (2026-03-28)
+
+
+### Bug Fixes
+
+* skip accounts with burned tokens and notify user to re-authenticate ([5171896](https://github.com/victor-software-house/pi-multicodex/commit/51718960e248fa6fc8f0c88e74dec83ac4c14cd6))
+
 ## [2.0.9](https://github.com/victor-software-house/pi-multicodex/compare/v2.0.8...v2.0.9) (2026-03-27)
 
 
