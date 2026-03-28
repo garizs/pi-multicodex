@@ -52,12 +52,16 @@ export class AccountManager {
 	 * (rename, compaction) can resolve a valid API key via AuthStorage.
 	 */
 	private syncActiveTokenToAuthJson(account: Account): void {
-		writeActiveTokenToAuthJson({
-			access: account.accessToken,
-			refresh: account.refreshToken,
-			expires: account.expiresAt,
-			accountId: account.accountId,
-		}).catch(() => {});
+		try {
+			writeActiveTokenToAuthJson({
+				access: account.accessToken,
+				refresh: account.refreshToken,
+				expires: account.expiresAt,
+				accountId: account.accountId,
+			});
+		} catch {
+			// Best-effort sync — do not block token resolution.
+		}
 	}
 
 	onStateChange(handler: StateChangeHandler): () => void {

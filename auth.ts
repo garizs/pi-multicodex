@@ -1,4 +1,9 @@
-import { promises as fs } from "node:fs";
+import {
+	existsSync,
+	promises as fs,
+	readFileSync,
+	writeFileSync,
+} from "node:fs";
 import type { OAuthCredentials } from "@mariozechner/pi-ai/oauth";
 import { getAgentAuthPath } from "pi-provider-utils/agent-paths";
 
@@ -90,18 +95,26 @@ export function parseImportedOpenAICodexAuth(
  * (rename, compaction, inline suggestions) can resolve a valid API key through
  * the normal AuthStorage path.
  */
-export async function writeActiveTokenToAuthJson(creds: {
+/**
+ * Synchronously write the active account's tokens to auth.json so pi's
+ * background features (rename, compaction) can resolve a valid API key.
+ *
+ * Uses synchronous I/O to avoid interleaved writes with pi's own code.
+ */
+export function writeActiveTokenToAuthJson(creds: {
 	access: string;
 	refresh: string;
 	expires: number;
 	accountId?: string;
-}): Promise<void> {
+}): void {
 	let auth: Record<string, unknown> = {};
 	try {
-		const raw = await fs.readFile(AUTH_FILE, "utf8");
-		const parsed = JSON.parse(raw) as unknown;
-		if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-			auth = parsed as Record<string, unknown>;
+		if (existsSync(AUTH_FILE)) {
+			const raw = readFileSync(AUTH_FILE, "utf8");
+			const parsed = JSON.parse(raw) as unknown;
+			if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+				auth = parsed as Record<string, unknown>;
+			}
 		}
 	} catch {
 		// File missing or corrupt — start fresh.
@@ -115,7 +128,7 @@ export async function writeActiveTokenToAuthJson(creds: {
 		accountId: creds.accountId,
 	};
 
-	await fs.writeFile(AUTH_FILE, JSON.stringify(auth, null, 2));
+	writeFileSync(AUTH_FILE, JSON.stringify(auth, null, 2));
 }
 
 export async function loadImportedOpenAICodexAuth(): Promise<
@@ -128,11 +141,8 @@ export async function loadImportedOpenAICodexAuth(): Promise<
 			return undefined;
 		}
 		return parseImportedOpenAICodexAuth(parsed as Record<string, unknown>);
-	} catch (error) {
-		const withCode = error as Error & { code?: string };
-		if (withCode.code === "ENOENT") {
-			return undefined;
-		}
-		throw error;
+	} catch {
+		// File missing, corrupt, or unreadable — treat as no imported auth.
+		return undefined;
 	}
 }
