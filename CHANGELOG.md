@@ -1,3 +1,10 @@
+## [2.0.11](https://github.com/victor-software-house/pi-multicodex/compare/v2.0.10...v2.0.11) (2026-03-28)
+
+
+### Bug Fixes
+
+* sync active account tokens to auth.json for pi background features ([ee917bf](https://github.com/victor-software-house/pi-multicodex/commit/ee917bf3cdc8ca586640c0f0f4f2e9254692b060))
+
 ## [2.0.10](https://github.com/victor-software-house/pi-multicodex/compare/v2.0.9...v2.0.10) (2026-03-28)
 
 
