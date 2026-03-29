@@ -6,13 +6,13 @@ async function refreshAndActivateBestAccount(
 	accountManager: AccountManager,
 	warningHandler?: WarningHandler,
 ): Promise<void> {
-	await accountManager.syncImportedOpenAICodexAuth();
+	await accountManager.loadPiAuth();
 	await accountManager.refreshUsageForAllAccounts({ force: true });
 
 	const needsReauth = accountManager.getAccountsNeedingReauth();
 	if (needsReauth.length > 0) {
 		const hints = needsReauth.map((a) => {
-			const cmd = a.importSource
+			const cmd = accountManager.isPiAuthAccount(a)
 				? "/login openai-codex"
 				: `/multicodex use ${a.email}`;
 			return `${a.email} (${cmd})`;

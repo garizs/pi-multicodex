@@ -25,7 +25,6 @@ vi.mock("./storage", () => ({
 // Mock auth helpers so tests never touch the real ~/.pi/agent/auth.json.
 vi.mock("./auth", () => ({
 	loadImportedOpenAICodexAuth: vi.fn().mockResolvedValue(undefined),
-	writeActiveTokenToAuthJson: vi.fn(),
 }));
 
 import { refreshOpenAICodexToken } from "@mariozechner/pi-ai/oauth";

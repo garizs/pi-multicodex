@@ -3,7 +3,7 @@ import { handleNewSessionSwitch, handleSessionStart } from "./hooks";
 
 describe("handleSessionStart", () => {
 	it("does nothing when no accounts exist", () => {
-		const syncImportedOpenAICodexAuth = vi.fn();
+		const loadPiAuth = vi.fn();
 		const refreshUsageForAllAccounts = vi.fn();
 		const getAvailableManualAccount = vi.fn();
 		const hasManualAccount = vi.fn();
@@ -12,7 +12,7 @@ describe("handleSessionStart", () => {
 
 		handleSessionStart({
 			getAccounts: () => [],
-			syncImportedOpenAICodexAuth,
+			loadPiAuth,
 			refreshUsageForAllAccounts,
 			getAvailableManualAccount,
 			hasManualAccount,
@@ -20,7 +20,7 @@ describe("handleSessionStart", () => {
 			activateBestAccount,
 		} as never);
 
-		expect(syncImportedOpenAICodexAuth).not.toHaveBeenCalled();
+		expect(loadPiAuth).not.toHaveBeenCalled();
 		expect(refreshUsageForAllAccounts).not.toHaveBeenCalled();
 		expect(getAvailableManualAccount).not.toHaveBeenCalled();
 		expect(hasManualAccount).not.toHaveBeenCalled();
@@ -29,7 +29,7 @@ describe("handleSessionStart", () => {
 	});
 
 	it("refreshes and activates when accounts exist and no manual account is available", async () => {
-		const syncImportedOpenAICodexAuth = vi.fn().mockResolvedValue(undefined);
+		const loadPiAuth = vi.fn().mockResolvedValue(undefined);
 		const refreshUsageForAllAccounts = vi.fn().mockResolvedValue(undefined);
 		const getAvailableManualAccount = vi.fn().mockReturnValue(undefined);
 		const hasManualAccount = vi.fn().mockReturnValue(false);
@@ -38,7 +38,8 @@ describe("handleSessionStart", () => {
 
 		handleSessionStart({
 			getAccounts: () => [{ email: "a@example.com" }],
-			syncImportedOpenAICodexAuth,
+			loadPiAuth,
+			isPiAuthAccount: () => false,
 			refreshUsageForAllAccounts,
 			getAccountsNeedingReauth: () => [],
 			getAvailableManualAccount,
@@ -48,7 +49,7 @@ describe("handleSessionStart", () => {
 		} as never);
 
 		await vi.waitFor(() => {
-			expect(syncImportedOpenAICodexAuth).toHaveBeenCalled();
+			expect(loadPiAuth).toHaveBeenCalled();
 			expect(refreshUsageForAllAccounts).toHaveBeenCalledWith({ force: true });
 			expect(getAvailableManualAccount).toHaveBeenCalled();
 			expect(hasManualAccount).toHaveBeenCalled();
@@ -58,7 +59,7 @@ describe("handleSessionStart", () => {
 	});
 
 	it("keeps the manual account when one is available", async () => {
-		const syncImportedOpenAICodexAuth = vi.fn().mockResolvedValue(undefined);
+		const loadPiAuth = vi.fn().mockResolvedValue(undefined);
 		const refreshUsageForAllAccounts = vi.fn().mockResolvedValue(undefined);
 		const getAvailableManualAccount = vi
 			.fn()
@@ -69,7 +70,8 @@ describe("handleSessionStart", () => {
 
 		handleSessionStart({
 			getAccounts: () => [{ email: "manual@example.com" }],
-			syncImportedOpenAICodexAuth,
+			loadPiAuth,
+			isPiAuthAccount: () => false,
 			refreshUsageForAllAccounts,
 			getAccountsNeedingReauth: () => [],
 			getAvailableManualAccount,
@@ -79,7 +81,7 @@ describe("handleSessionStart", () => {
 		} as never);
 
 		await vi.waitFor(() => {
-			expect(syncImportedOpenAICodexAuth).toHaveBeenCalled();
+			expect(loadPiAuth).toHaveBeenCalled();
 			expect(refreshUsageForAllAccounts).toHaveBeenCalledWith({ force: true });
 			expect(getAvailableManualAccount).toHaveBeenCalled();
 			expect(hasManualAccount).not.toHaveBeenCalled();
@@ -91,7 +93,7 @@ describe("handleSessionStart", () => {
 
 describe("handleNewSessionSwitch", () => {
 	it("refreshes and clears stale manual state before activating the best account", async () => {
-		const syncImportedOpenAICodexAuth = vi.fn().mockResolvedValue(undefined);
+		const loadPiAuth = vi.fn().mockResolvedValue(undefined);
 		const refreshUsageForAllAccounts = vi.fn().mockResolvedValue(undefined);
 		const getAvailableManualAccount = vi.fn().mockReturnValue(undefined);
 		const hasManualAccount = vi.fn().mockReturnValue(true);
@@ -99,7 +101,8 @@ describe("handleNewSessionSwitch", () => {
 		const activateBestAccount = vi.fn().mockResolvedValue(undefined);
 
 		handleNewSessionSwitch({
-			syncImportedOpenAICodexAuth,
+			loadPiAuth,
+			isPiAuthAccount: () => false,
 			refreshUsageForAllAccounts,
 			getAccountsNeedingReauth: () => [],
 			getAvailableManualAccount,
@@ -109,7 +112,7 @@ describe("handleNewSessionSwitch", () => {
 		} as never);
 
 		await vi.waitFor(() => {
-			expect(syncImportedOpenAICodexAuth).toHaveBeenCalled();
+			expect(loadPiAuth).toHaveBeenCalled();
 			expect(refreshUsageForAllAccounts).toHaveBeenCalledWith({ force: true });
 			expect(getAvailableManualAccount).toHaveBeenCalled();
 			expect(hasManualAccount).toHaveBeenCalled();

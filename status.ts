@@ -411,11 +411,7 @@ export function createUsageStatusController(accountManager: AccountManager) {
 
 		renderCachedStatus(ctx, livePreviewPreferences ?? preferences);
 
-		let activeAccount = accountManager.getActiveAccount();
-		if (!activeAccount) {
-			await accountManager.syncImportedOpenAICodexAuth();
-			activeAccount = accountManager.getActiveAccount();
-		}
+		const activeAccount = accountManager.getActiveAccount();
 		if (!activeAccount) {
 			ctx.ui.setStatus(
 				STATUS_KEY,

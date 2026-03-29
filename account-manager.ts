@@ -23,6 +23,7 @@ type StateChangeHandler = () => void;
 
 export class AccountManager {
 	private data: StorageData;
+	private piAuthAccount?: Account;
 	private usageCache = new Map<string, CodexUsageSnapshot>();
 	private refreshPromises = new Map<string, Promise<string>>();
 	private warningHandler?: WarningHandler;
@@ -52,11 +53,19 @@ export class AccountManager {
 	}
 
 	getAccounts(): Account[] {
+		if (this.piAuthAccount) {
+			return [...this.data.accounts, this.piAuthAccount];
+		}
 		return this.data.accounts;
 	}
 
 	getAccount(email: string): Account | undefined {
+		if (this.piAuthAccount?.email === email) return this.piAuthAccount;
 		return this.data.accounts.find((a) => a.email === email);
+	}
+
+	isPiAuthAccount(account: Account): boolean {
+		return this.piAuthAccount !== undefined && account === this.piAuthAccount;
 	}
 
 	setWarningHandler(handler?: WarningHandler): void {
@@ -72,8 +81,8 @@ export class AccountManager {
 			return;
 		}
 		this.warnedAuthFailureEmails.add(account.email);
-		const hint = account.importSource
-			? "/multicodex reauth"
+		const hint = this.isPiAuthAccount(account)
+			? "/login openai-codex"
 			: `/multicodex reauth ${account.email}`;
 		this.warningHandler?.(
 			`Multicodex skipped ${account.email} during rotation: ${normalizeUnknownError(error)}. Account is flagged in /multicodex accounts. Run ${hint} to repair it.`,
@@ -127,15 +136,7 @@ export class AccountManager {
 		);
 	}
 
-	private applyCredentials(
-		account: Account,
-		creds: OAuthCredentials,
-		options?: {
-			importSource?: "pi-openai-codex";
-			importMode?: "linked" | "synthetic";
-			importFingerprint?: string;
-		},
-	): boolean {
+	private applyCredentials(account: Account, creds: OAuthCredentials): boolean {
 		const accountId =
 			typeof creds.accountId === "string" ? creds.accountId : undefined;
 		let changed = false;
@@ -155,24 +156,6 @@ export class AccountManager {
 			account.accountId = accountId;
 			changed = true;
 		}
-		if (
-			options?.importSource &&
-			account.importSource !== options.importSource
-		) {
-			account.importSource = options.importSource;
-			changed = true;
-		}
-		if (options?.importMode && account.importMode !== options.importMode) {
-			account.importMode = options.importMode;
-			changed = true;
-		}
-		if (
-			options?.importFingerprint &&
-			account.importFingerprint !== options.importFingerprint
-		) {
-			account.importFingerprint = options.importFingerprint;
-			changed = true;
-		}
 		if (account.needsReauth) {
 			account.needsReauth = undefined;
 			this.warnedAuthFailureEmails.delete(account.email);
@@ -184,14 +167,9 @@ export class AccountManager {
 	addOrUpdateAccount(
 		email: string,
 		creds: OAuthCredentials,
-		options?: {
-			importSource?: "pi-openai-codex";
-			importMode?: "linked" | "synthetic";
-			importFingerprint?: string;
-			preserveActive?: boolean;
-		},
+		options?: { preserveActive?: boolean },
 	): Account {
-		const existing = this.getAccount(email);
+		const existing = this.data.accounts.find((a) => a.email === email);
 		const duplicate = existing
 			? undefined
 			: this.findAccountByRefreshToken(creds.refresh);
@@ -199,20 +177,10 @@ export class AccountManager {
 		let changed = false;
 
 		if (target) {
-			if (
-				duplicate?.importSource === "pi-openai-codex" &&
-				duplicate.email !== email &&
-				!this.getAccount(email)
-			) {
+			if (duplicate && duplicate.email !== email && !existing) {
 				changed = this.updateAccountEmail(duplicate, email) || changed;
 			}
-			changed =
-				this.applyCredentials(target, creds, {
-					...options,
-					importMode:
-						options?.importMode ??
-						(duplicate?.importMode === "synthetic" ? "linked" : undefined),
-				}) || changed;
+			changed = this.applyCredentials(target, creds) || changed;
 		} else {
 			target = {
 				email,
@@ -221,9 +189,6 @@ export class AccountManager {
 				expiresAt: creds.expires,
 				accountId:
 					typeof creds.accountId === "string" ? creds.accountId : undefined,
-				importSource: options?.importSource,
-				importMode: options?.importMode,
-				importFingerprint: options?.importFingerprint,
 			};
 			this.data.accounts.push(target);
 			changed = true;
@@ -286,151 +251,41 @@ export class AccountManager {
 		this.notifyStateChanged();
 	}
 
-	getImportedAccount(): Account | undefined {
-		return this.data.accounts.find(
-			(account) => account.importSource === "pi-openai-codex",
-		);
-	}
-
-	private getLinkedImportedAccount(): Account | undefined {
-		return this.data.accounts.find(
-			(account) =>
-				account.importSource === "pi-openai-codex" &&
-				account.importMode !== "synthetic",
-		);
-	}
-
-	private getSyntheticImportedAccount(): Account | undefined {
-		return this.data.accounts.find(
-			(account) =>
-				account.importSource === "pi-openai-codex" &&
-				account.importMode === "synthetic",
-		);
-	}
-
-	private findManagedImportedTarget(imported: {
-		identifier: string;
-		credentials: OAuthCredentials;
-	}): Account | undefined {
-		const byRefreshToken = this.data.accounts.find(
-			(account) =>
-				account.importMode !== "synthetic" &&
-				account.refreshToken === imported.credentials.refresh,
-		);
-		if (byRefreshToken) {
-			return byRefreshToken;
-		}
-
-		return this.data.accounts.find(
-			(account) =>
-				account.importMode !== "synthetic" &&
-				account.email === imported.identifier,
-		);
-	}
-
-	private clearImportedLink(account: Account): boolean {
-		let changed = false;
-		if (account.importSource) {
-			account.importSource = undefined;
-			changed = true;
-		}
-		if (account.importMode) {
-			account.importMode = undefined;
-			changed = true;
-		}
-		if (account.importFingerprint) {
-			account.importFingerprint = undefined;
-			changed = true;
-		}
-		return changed;
-	}
-
-	detachImportedAuth(email: string): boolean {
-		const account = this.getAccount(email);
-		if (!account) return false;
-		const changed = this.clearImportedLink(account);
-		if (changed) {
-			this.save();
-			this.notifyStateChanged();
-		}
-		return changed;
-	}
-
-	async syncImportedOpenAICodexAuth(): Promise<boolean> {
+	/**
+	 * Read pi's openai-codex auth from auth.json and expose it as a
+	 * memory-only ephemeral account. Never persists to codex-accounts.json.
+	 * If the identity already exists as a managed account, skip it.
+	 */
+	async loadPiAuth(): Promise<void> {
 		const imported = await loadImportedOpenAICodexAuth();
-		if (!imported) return false;
-
-		const linkedImported = this.getLinkedImportedAccount();
-		const syntheticImported = this.getSyntheticImportedAccount();
-		const currentImported = linkedImported ?? syntheticImported;
-		if (
-			currentImported?.importFingerprint === imported.fingerprint &&
-			(currentImported.importMode !== "synthetic" ||
-				currentImported.email === imported.identifier)
-		) {
-			return false;
+		if (!imported) {
+			this.piAuthAccount = undefined;
+			this.notifyStateChanged();
+			return;
 		}
 
-		const matchingAccount = this.findManagedImportedTarget(imported);
-		if (matchingAccount) {
-			let changed = this.applyCredentials(
-				matchingAccount,
-				imported.credentials,
-				{
-					importSource: "pi-openai-codex",
-					importMode: "linked",
-					importFingerprint: imported.fingerprint,
-				},
-			);
-			if (linkedImported && linkedImported !== matchingAccount) {
-				changed = this.clearImportedLink(linkedImported) || changed;
-			}
-			if (syntheticImported) {
-				changed = this.removeAccountRecord(syntheticImported) || changed;
-			}
-			if (changed) {
-				this.save();
-				this.notifyStateChanged();
-			}
-			return changed;
+		const alreadyManaged =
+			this.data.accounts.find(
+				(a) => a.refreshToken === imported.credentials.refresh,
+			) ?? this.data.accounts.find((a) => a.email === imported.identifier);
+
+		if (alreadyManaged) {
+			this.piAuthAccount = undefined;
+			this.notifyStateChanged();
+			return;
 		}
 
-		if (linkedImported) {
-			const changed = this.clearImportedLink(linkedImported);
-			if (changed) {
-				this.save();
-				this.notifyStateChanged();
-			}
-		}
-
-		if (syntheticImported) {
-			let changed = false;
-			if (syntheticImported.email !== imported.identifier) {
-				changed = this.updateAccountEmail(
-					syntheticImported,
-					imported.identifier,
-				);
-			}
-			changed =
-				this.applyCredentials(syntheticImported, imported.credentials, {
-					importSource: "pi-openai-codex",
-					importMode: "synthetic",
-					importFingerprint: imported.fingerprint,
-				}) || changed;
-			if (changed) {
-				this.save();
-				this.notifyStateChanged();
-			}
-			return changed;
-		}
-
-		this.addOrUpdateAccount(imported.identifier, imported.credentials, {
-			importSource: "pi-openai-codex",
-			importMode: "synthetic",
-			importFingerprint: imported.fingerprint,
-			preserveActive: true,
-		});
-		return true;
+		this.piAuthAccount = {
+			email: imported.identifier,
+			accessToken: imported.credentials.access,
+			refreshToken: imported.credentials.refresh,
+			expiresAt: imported.credentials.expires,
+			accountId:
+				typeof imported.credentials.accountId === "string"
+					? imported.credentials.accountId
+					: undefined,
+		};
+		this.notifyStateChanged();
 	}
 
 	getAvailableManualAccount(options?: {
@@ -489,7 +344,9 @@ export class AccountManager {
 
 	private markNeedsReauth(account: Account): void {
 		account.needsReauth = true;
-		this.save();
+		if (!this.isPiAuthAccount(account)) {
+			this.save();
+		}
 		this.notifyStateChanged();
 	}
 
@@ -561,7 +418,7 @@ export class AccountManager {
 	}): Promise<Account | undefined> {
 		const now = Date.now();
 		this.clearExpiredExhaustion(now);
-		const accounts = this.data.accounts;
+		const accounts = this.getAccounts();
 		await this.refreshUsageIfStale(accounts, options);
 
 		const selected = pickBestAccount(accounts, this.usageCache, {
@@ -605,7 +462,7 @@ export class AccountManager {
 
 	async ensureValidToken(account: Account): Promise<string> {
 		if (account.needsReauth) {
-			const hint = account.importSource
+			const hint = this.isPiAuthAccount(account)
 				? "/login openai-codex"
 				: `/multicodex use ${account.email}`;
 			throw new Error(
@@ -617,10 +474,8 @@ export class AccountManager {
 			return account.accessToken;
 		}
 
-		// Imported auth is read-only. MultiCodex never refreshes or writes
-		// auth.json and instead requires the user to repair pi auth explicitly.
-		if (account.importSource === "pi-openai-codex") {
-			return this.ensureValidTokenForImportedAccount(account);
+		if (this.isPiAuthAccount(account)) {
+			return this.ensureValidTokenForPiAuth(account);
 		}
 
 		const inflight = this.refreshPromises.get(account.email);
@@ -655,20 +510,15 @@ export class AccountManager {
 	}
 
 	/**
-	 * Read-only path for imported pi auth.
-	 *
-	 * MultiCodex may read auth.json to mirror pi's currently active Codex auth,
-	 * but it must never refresh or write auth.json itself.
+	 * Read-only refresh for the ephemeral pi auth account.
+	 * Re-reads auth.json for fresh tokens. Never writes anything.
 	 */
-	private async ensureValidTokenForImportedAccount(
-		account: Account,
-	): Promise<string> {
+	private async ensureValidTokenForPiAuth(account: Account): Promise<string> {
 		const latest = await loadImportedOpenAICodexAuth();
 		if (latest && Date.now() < latest.credentials.expires - 5 * 60 * 1000) {
 			account.accessToken = latest.credentials.access;
 			account.refreshToken = latest.credentials.refresh;
 			account.expiresAt = latest.credentials.expires;
-			account.importFingerprint = latest.fingerprint;
 			const accountId =
 				typeof latest.credentials.accountId === "string"
 					? latest.credentials.accountId
@@ -676,14 +526,14 @@ export class AccountManager {
 			if (accountId) {
 				account.accountId = accountId;
 			}
-			this.save();
 			this.notifyStateChanged();
 			return account.accessToken;
 		}
 
-		this.markNeedsReauth(account);
+		this.piAuthAccount = undefined;
+		this.notifyStateChanged();
 		throw new Error(
-			`${account.email}: imported pi auth is expired — run /login openai-codex to re-authenticate`,
+			`${account.email}: pi auth expired — run /login openai-codex`,
 		);
 	}
 }

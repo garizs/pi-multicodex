@@ -1,8 +1,5 @@
 export { AccountManager } from "./account-manager";
-export {
-	loadImportedOpenAICodexAuth,
-	parseImportedOpenAICodexAuth,
-} from "./auth";
+export { parseImportedOpenAICodexAuth } from "./auth";
 export { default } from "./extension";
 export {
 	buildMulticodexProviderConfig,

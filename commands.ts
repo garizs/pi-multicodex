@@ -102,19 +102,14 @@ function getAccountTags(
 	const manual = accountManager.getManualAccount();
 	const quotaHit =
 		account.quotaExhaustedUntil && account.quotaExhaustedUntil > Date.now();
-	const imported = account.importSource
-		? account.importMode === "synthetic"
-			? "pi auth only"
-			: "pi auth"
-		: null;
 	return [
 		active?.email === account.email ? "active" : null,
 		manual?.email === account.email ? "manual" : null,
+		accountManager.isPiAuthAccount(account) ? "pi auth" : null,
 		account.needsReauth ? "needs reauth" : null,
 		isPlaceholderAccount(account) ? "placeholder" : null,
 		quotaHit ? "quota" : null,
 		isUsageUntouched(usage) ? "untouched" : null,
-		imported,
 	].filter((value): value is string => Boolean(value));
 }
 
@@ -245,11 +240,7 @@ async function loginAndActivateAccount(
 			onPrompt: async ({ message }) => (await ctx.ui.input(message)) || "",
 		});
 
-		const existing = accountManager.getAccount(identifier);
 		const account = accountManager.addOrUpdateAccount(identifier, creds);
-		if (existing?.importSource) {
-			accountManager.detachImportedAuth(account.email);
-		}
 		accountManager.setManualAccount(account.email);
 		ctx.ui.notify(`Now using ${account.email}`, "info");
 		return account.email;
@@ -659,7 +650,6 @@ async function runAccountsSubcommand(
 	statusController: ReturnType<typeof createUsageStatusController>,
 	rest: string,
 ): Promise<void> {
-	await accountManager.syncImportedOpenAICodexAuth();
 	await accountManager.refreshUsageForAllAccounts();
 
 	if (rest) {
@@ -722,7 +712,7 @@ async function runRotationSubcommand(
 		"Current policy: manual account first, then untouched accounts, then earliest weekly reset, then random fallback.",
 		"If token validation fails before a request starts, MultiCodex skips that account and retries another one.",
 		"If a request hits quota or rate limit before any output streams, MultiCodex marks the account on cooldown and retries.",
-		"Imported pi auth is merged into the managed pool so duplicate credentials do not consume extra rotation slots.",
+		"If pi auth is active, it participates in rotation as an ephemeral account without being persisted.",
 	];
 
 	if (!ctx.hasUI) {
@@ -751,8 +741,10 @@ async function runVerifySubcommand(
 ): Promise<void> {
 	const storageWritable = await isWritableDirectoryFor(STORAGE_FILE);
 	const settingsWritable = await isWritableDirectoryFor(SETTINGS_FILE);
-	const authImported = await accountManager.syncImportedOpenAICodexAuth();
 	await statusController.loadPreferences(ctx);
+	const hasPiAuth = accountManager
+		.getAccounts()
+		.some((a) => accountManager.isPiAuthAccount(a));
 	const accounts = accountManager.getAccounts().length;
 	const active = accountManager.getActiveAccount()?.email ?? "none";
 	const needsReauth = accountManager.getAccountsNeedingReauth().length;
@@ -760,7 +752,7 @@ async function runVerifySubcommand(
 
 	if (!ctx.hasUI) {
 		ctx.ui.notify(
-			`verify: ${ok ? "PASS" : "WARN"} storage=${storageWritable ? "ok" : "fail"} settings=${settingsWritable ? "ok" : "fail"} accounts=${accounts} active=${active} authImport=${authImported ? "updated" : "unchanged"} needsReauth=${needsReauth}`,
+			`verify: ${ok ? "PASS" : "WARN"} storage=${storageWritable ? "ok" : "fail"} settings=${settingsWritable ? "ok" : "fail"} accounts=${accounts} active=${active} piAuth=${hasPiAuth ? "loaded" : "none"} needsReauth=${needsReauth}`,
 			ok ? "info" : "warning",
 		);
 		return;
@@ -771,8 +763,8 @@ async function runVerifySubcommand(
 		`settings directory writable: ${settingsWritable ? "yes" : "no"}`,
 		`managed accounts: ${accounts}`,
 		`active account: ${active}`,
+		`pi auth (ephemeral): ${hasPiAuth ? "loaded" : "none"}`,
 		`accounts needing re-authentication: ${needsReauth}`,
-		`auth import changed state: ${authImported ? "yes" : "no"}`,
 	];
 	await ctx.ui.select(`MultiCodex Verify (${ok ? "PASS" : "WARN"})`, lines);
 }
@@ -871,7 +863,6 @@ async function runRefreshSubcommand(
 	statusController: ReturnType<typeof createUsageStatusController>,
 	rest: string,
 ): Promise<void> {
-	await accountManager.syncImportedOpenAICodexAuth();
 	if (!rest || rest === "all") {
 		if (!ctx.hasUI || rest === "all") {
 			await refreshAllAccounts(ctx, accountManager);
@@ -892,7 +883,6 @@ async function runReauthSubcommand(
 	statusController: ReturnType<typeof createUsageStatusController>,
 	rest: string,
 ): Promise<void> {
-	await accountManager.syncImportedOpenAICodexAuth();
 	if (rest) {
 		await reauthenticateAccount(pi, ctx, accountManager, rest);
 		await statusController.refreshFor(ctx);

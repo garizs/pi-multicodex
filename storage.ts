@@ -10,10 +10,15 @@ export interface Account {
 	accountId?: string;
 	lastUsed?: number;
 	quotaExhaustedUntil?: number;
-	importSource?: "pi-openai-codex";
-	importMode?: "linked" | "synthetic";
-	importFingerprint?: string;
 	needsReauth?: boolean;
+}
+
+function stripLegacyImportFields(account: Record<string, unknown>): void {
+	for (const key of ["importSource", "importMode", "importFingerprint"]) {
+		if (key in account) {
+			delete account[key];
+		}
+	}
 }
 
 export interface StorageData {
@@ -26,7 +31,25 @@ export const STORAGE_FILE = getAgentPath("codex-accounts.json");
 export function loadStorage(): StorageData {
 	try {
 		if (fs.existsSync(STORAGE_FILE)) {
-			return JSON.parse(fs.readFileSync(STORAGE_FILE, "utf-8")) as StorageData;
+			const data = JSON.parse(
+				fs.readFileSync(STORAGE_FILE, "utf-8"),
+			) as StorageData;
+			let migrated = false;
+			for (const account of data.accounts) {
+				const raw = account as unknown as Record<string, unknown>;
+				if (
+					"importSource" in raw ||
+					"importMode" in raw ||
+					"importFingerprint" in raw
+				) {
+					stripLegacyImportFields(raw);
+					migrated = true;
+				}
+			}
+			if (migrated) {
+				saveStorage(data);
+			}
+			return data;
 		}
 	} catch (error) {
 		console.error("Failed to load multicodex accounts:", error);
