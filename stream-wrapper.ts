@@ -68,6 +68,7 @@ export function createStreamWrapper(
 					try {
 						token = await accountManager.ensureValidToken(account);
 					} catch (error) {
+						accountManager.notifyRotationSkipForAuthFailure(account, error);
 						if (usingManual) {
 							accountManager.clearManualAccount();
 						}

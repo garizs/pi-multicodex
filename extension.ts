@@ -28,6 +28,7 @@ export default function multicodexExtension(pi: ExtensionAPI) {
 
 	pi.on("session_start", (_event: unknown, ctx: ExtensionContext) => {
 		lastContext = ctx;
+		accountManager.resetSessionWarnings();
 		handleSessionStart(accountManager, (msg) => ctx.ui.notify(msg, "warning"));
 		statusController.startAutoRefresh();
 		void (async () => {
@@ -41,6 +42,7 @@ export default function multicodexExtension(pi: ExtensionAPI) {
 		(event: { reason?: string }, ctx: ExtensionContext) => {
 			lastContext = ctx;
 			if (event.reason === "new") {
+				accountManager.resetSessionWarnings();
 				handleNewSessionSwitch(accountManager, (msg) =>
 					ctx.ui.notify(msg, "warning"),
 				);

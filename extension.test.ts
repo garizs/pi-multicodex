@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
 	handleNewSessionSwitch: vi.fn(),
 	buildMulticodexProviderConfig: vi.fn(() => ({ mocked: true })),
 	setWarningHandler: vi.fn(),
+	resetSessionWarnings: vi.fn(),
 	statusRefreshFor: vi.fn(),
 	statusStartAutoRefresh: vi.fn(),
 	statusStopAutoRefresh: vi.fn(),
@@ -16,6 +17,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("./account-manager", () => ({
 	AccountManager: class MockAccountManager {
 		setWarningHandler = mocks.setWarningHandler;
+		resetSessionWarnings = mocks.resetSessionWarnings;
 	},
 }));
 
@@ -52,6 +54,7 @@ describe("multicodexExtension", () => {
 		mocks.handleNewSessionSwitch.mockClear();
 		mocks.buildMulticodexProviderConfig.mockClear();
 		mocks.setWarningHandler.mockClear();
+		mocks.resetSessionWarnings.mockClear();
 		mocks.statusRefreshFor.mockClear();
 		mocks.statusStartAutoRefresh.mockClear();
 		mocks.statusStopAutoRefresh.mockClear();
@@ -108,6 +111,7 @@ describe("multicodexExtension", () => {
 		expect(sessionShutdown).toBeTypeOf("function");
 
 		sessionStart?.({}, ctx as never);
+		expect(mocks.resetSessionWarnings).toHaveBeenCalledTimes(1);
 		expect(mocks.handleSessionStart).toHaveBeenCalledOnce();
 		expect(mocks.statusStartAutoRefresh).toHaveBeenCalledOnce();
 		await vi.waitFor(() => {
@@ -120,6 +124,7 @@ describe("multicodexExtension", () => {
 		expect(mocks.statusRefreshFor).toHaveBeenCalledTimes(2);
 
 		sessionSwitch?.({ reason: "new" }, ctx as never);
+		expect(mocks.resetSessionWarnings).toHaveBeenCalledTimes(2);
 		expect(mocks.handleNewSessionSwitch).toHaveBeenCalledOnce();
 		expect(mocks.statusRefreshFor).toHaveBeenCalledTimes(3);
 

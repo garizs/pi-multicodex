@@ -121,3 +121,56 @@ describe("AccountManager account deduplication", () => {
 		expect(manager.getActiveAccount()?.email).toBe("real@example.com");
 	});
 });
+
+describe("AccountManager auth-failure warnings", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mocks.storageData.accounts = [];
+		mocks.storageData.activeEmail = undefined;
+		mocks.loadImportedOpenAICodexAuth.mockResolvedValue(undefined);
+	});
+
+	it("warns once per session for a skipped auth-broken account and resets on reauth", () => {
+		const manager = new AccountManager();
+		const warningHandler = vi.fn();
+		manager.setWarningHandler(warningHandler);
+		const account = manager.addOrUpdateAccount("warn@example.com", {
+			access: "access",
+			refresh: "refresh",
+			expires: 100,
+		});
+		account.needsReauth = true;
+
+		manager.notifyRotationSkipForAuthFailure(
+			account,
+			new Error("refresh failed"),
+		);
+		manager.notifyRotationSkipForAuthFailure(
+			account,
+			new Error("refresh failed"),
+		);
+		expect(warningHandler).toHaveBeenCalledTimes(1);
+		expect(warningHandler.mock.calls[0]?.[0]).toContain("warn@example.com");
+		expect(warningHandler.mock.calls[0]?.[0]).toContain(
+			"/multicodex reauth warn@example.com",
+		);
+
+		manager.addOrUpdateAccount("warn@example.com", {
+			access: "new-access",
+			refresh: "refresh",
+			expires: 200,
+		});
+		manager.notifyRotationSkipForAuthFailure(
+			account,
+			new Error("refresh failed again"),
+		);
+		expect(warningHandler).toHaveBeenCalledTimes(2);
+
+		manager.resetSessionWarnings();
+		manager.notifyRotationSkipForAuthFailure(
+			account,
+			new Error("refresh failed third"),
+		);
+		expect(warningHandler).toHaveBeenCalledTimes(3);
+	});
+});

@@ -1,5 +1,5 @@
 import { getModels } from "@mariozechner/pi-ai";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
 	type Account,
 	type AccountManager,
@@ -429,6 +429,7 @@ describe("manual account selection", () => {
 		const headers: string[] = [];
 		const events: Array<{ type?: string }> = [];
 
+		const notifyRotationSkipForAuthFailure = vi.fn();
 		const accountManager = {
 			syncImportedOpenAICodexAuth: async () => false,
 			getAvailableManualAccount: () => undefined,
@@ -446,6 +447,7 @@ describe("manual account selection", () => {
 				}
 				return "healthy-token";
 			},
+			notifyRotationSkipForAuthFailure,
 			handleQuotaExceeded: async () => {},
 		} as unknown as AccountManager;
 
@@ -482,5 +484,9 @@ describe("manual account selection", () => {
 		expect(activateCount).toBe(2);
 		expect(headers).toEqual(["healthy@example.com"]);
 		expect(events.some((event) => event.type === "error")).toBe(false);
+		expect(notifyRotationSkipForAuthFailure).toHaveBeenCalledWith(
+			broken,
+			expect.any(Error),
+		);
 	});
 });

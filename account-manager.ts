@@ -32,6 +32,7 @@ export class AccountManager {
 	private warningHandler?: WarningHandler;
 	private manualEmail?: string;
 	private stateChangeHandlers = new Set<StateChangeHandler>();
+	private warnedAuthFailureEmails = new Set<string>();
 
 	constructor() {
 		this.data = loadStorage();
@@ -81,6 +82,23 @@ export class AccountManager {
 
 	setWarningHandler(handler?: WarningHandler): void {
 		this.warningHandler = handler;
+	}
+
+	resetSessionWarnings(): void {
+		this.warnedAuthFailureEmails.clear();
+	}
+
+	notifyRotationSkipForAuthFailure(account: Account, error: unknown): void {
+		if (this.warnedAuthFailureEmails.has(account.email)) {
+			return;
+		}
+		this.warnedAuthFailureEmails.add(account.email);
+		const hint = account.importSource
+			? "/multicodex reauth"
+			: `/multicodex reauth ${account.email}`;
+		this.warningHandler?.(
+			`Multicodex skipped ${account.email} during rotation: ${normalizeUnknownError(error)}. Account is flagged in /multicodex accounts. Run ${hint} to repair it.`,
+		);
 	}
 
 	private updateAccountEmail(account: Account, email: string): boolean {
@@ -173,6 +191,7 @@ export class AccountManager {
 		}
 		if (account.needsReauth) {
 			account.needsReauth = undefined;
+			this.warnedAuthFailureEmails.delete(account.email);
 			changed = true;
 		}
 		return changed;
