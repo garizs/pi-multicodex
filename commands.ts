@@ -99,7 +99,11 @@ function formatAccountStatusLine(
 	const quotaHit =
 		account.quotaExhaustedUntil && account.quotaExhaustedUntil > Date.now();
 	const untouched = isUsageUntouched(usage) ? "untouched" : null;
-	const imported = account.importSource ? "pi auth" : null;
+	const imported = account.importSource
+		? account.importMode === "synthetic"
+			? "pi auth only"
+			: "pi auth"
+		: null;
 	const reauth = account.needsReauth ? "needs reauth" : null;
 	const tags = [
 		active?.email === account.email ? "active" : null,

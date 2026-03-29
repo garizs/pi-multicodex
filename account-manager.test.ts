@@ -174,6 +174,116 @@ describe("AccountManager account deduplication", () => {
 		});
 	});
 
+	it("clears legacy imported links from the previous account when auth.json switches accounts", async () => {
+		mocks.storageData.accounts = [
+			{
+				email: "victor.araujo105@gmail.com",
+				accessToken: "gmail-access",
+				refreshToken: "gmail-refresh",
+				expiresAt: 100,
+				importSource: "pi-openai-codex",
+			},
+			{
+				email: "araujo.victor@alu.ufc.br",
+				accessToken: "ufc-access",
+				refreshToken: "ufc-refresh",
+				expiresAt: 100,
+			},
+		];
+		mocks.loadImportedOpenAICodexAuth.mockResolvedValue({
+			identifier: "araujo.victor@alu.ufc.br",
+			fingerprint: "ufc-fingerprint",
+			credentials: {
+				access: "ufc-access-new",
+				refresh: "ufc-refresh",
+				expires: 200,
+			},
+		});
+
+		const manager = new AccountManager();
+		const changed = await manager.syncImportedOpenAICodexAuth();
+
+		expect(changed).toBe(true);
+		expect(manager.getAccount("victor.araujo105@gmail.com")).toMatchObject({
+			email: "victor.araujo105@gmail.com",
+			importSource: undefined,
+		});
+		expect(manager.getAccount("araujo.victor@alu.ufc.br")).toMatchObject({
+			email: "araujo.victor@alu.ufc.br",
+			accessToken: "ufc-access-new",
+			importSource: "pi-openai-codex",
+			importMode: "linked",
+			importFingerprint: "ufc-fingerprint",
+		});
+	});
+
+	it("keeps unrelated managed accounts when imported auth only matches one account", async () => {
+		mocks.storageData.accounts = [
+			{
+				email: "victor@victor-software-house.com",
+				accessToken: "victor-access",
+				refreshToken: "victor-refresh",
+				expiresAt: 100,
+				needsReauth: true,
+			},
+			{
+				email: "araujo.victor@alu.ufc.br",
+				accessToken: "ufc-access",
+				refreshToken: "ufc-refresh",
+				expiresAt: 100,
+				needsReauth: true,
+			},
+			{
+				email: "OpenAI Codex ef5816db",
+				accessToken: "imported-access",
+				refreshToken: "gmail-refresh",
+				expiresAt: 90,
+				accountId: "gmail",
+				importSource: "pi-openai-codex",
+				importMode: "synthetic",
+				importFingerprint: "old-fingerprint",
+			},
+		];
+		mocks.loadImportedOpenAICodexAuth.mockResolvedValue({
+			identifier: "victor.araujo105@gmail.com",
+			fingerprint: "gmail-fingerprint",
+			credentials: {
+				access: "gmail-access",
+				refresh: "gmail-refresh",
+				expires: 200,
+				accountId: "gmail",
+			},
+		});
+
+		const manager = new AccountManager();
+		const changed = await manager.syncImportedOpenAICodexAuth();
+
+		expect(changed).toBe(true);
+		expect(manager.getAccounts().map((account) => account.email)).toEqual([
+			"victor@victor-software-house.com",
+			"araujo.victor@alu.ufc.br",
+			"victor.araujo105@gmail.com",
+		]);
+		expect(
+			manager.getAccount("victor@victor-software-house.com"),
+		).toMatchObject({
+			email: "victor@victor-software-house.com",
+			refreshToken: "victor-refresh",
+			needsReauth: true,
+		});
+		expect(manager.getAccount("araujo.victor@alu.ufc.br")).toMatchObject({
+			email: "araujo.victor@alu.ufc.br",
+			refreshToken: "ufc-refresh",
+			needsReauth: true,
+		});
+		expect(manager.getAccount("victor.araujo105@gmail.com")).toMatchObject({
+			email: "victor.araujo105@gmail.com",
+			refreshToken: "gmail-refresh",
+			importSource: "pi-openai-codex",
+			importMode: "synthetic",
+		});
+	});
+
 	it("keeps previously linked managed accounts when imported auth moves to another account", async () => {
 		mocks.storageData.accounts = [
 			{

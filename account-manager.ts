@@ -313,6 +313,42 @@ export class AccountManager {
 		);
 	}
 
+	private getLinkedImportedAccount(): Account | undefined {
+		return this.data.accounts.find(
+			(account) =>
+				account.importSource === "pi-openai-codex" &&
+				account.importMode !== "synthetic",
+		);
+	}
+
+	private getSyntheticImportedAccount(): Account | undefined {
+		return this.data.accounts.find(
+			(account) =>
+				account.importSource === "pi-openai-codex" &&
+				account.importMode === "synthetic",
+		);
+	}
+
+	private findManagedImportedTarget(imported: {
+		identifier: string;
+		credentials: OAuthCredentials;
+	}): Account | undefined {
+		const byRefreshToken = this.data.accounts.find(
+			(account) =>
+				account.importMode !== "synthetic" &&
+				account.refreshToken === imported.credentials.refresh,
+		);
+		if (byRefreshToken) {
+			return byRefreshToken;
+		}
+
+		return this.data.accounts.find(
+			(account) =>
+				account.importMode !== "synthetic" &&
+				account.email === imported.identifier,
+		);
+	}
+
 	private clearImportedLink(account: Account): boolean {
 		let changed = false;
 		if (account.importSource) {
@@ -334,19 +370,18 @@ export class AccountManager {
 		const imported = await loadImportedOpenAICodexAuth();
 		if (!imported) return false;
 
-		const existingImported = this.getImportedAccount();
+		const linkedImported = this.getLinkedImportedAccount();
+		const syntheticImported = this.getSyntheticImportedAccount();
+		const currentImported = linkedImported ?? syntheticImported;
 		if (
-			existingImported?.importFingerprint === imported.fingerprint &&
-			(existingImported.importMode !== "synthetic" ||
-				existingImported.email === imported.identifier)
+			currentImported?.importFingerprint === imported.fingerprint &&
+			(currentImported.importMode !== "synthetic" ||
+				currentImported.email === imported.identifier)
 		) {
 			return false;
 		}
 
-		const matchingAccount = this.findAccountByRefreshToken(
-			imported.credentials.refresh,
-			existingImported?.email,
-		);
+		const matchingAccount = this.findManagedImportedTarget(imported);
 		if (matchingAccount) {
 			let changed = this.applyCredentials(
 				matchingAccount,
@@ -357,12 +392,11 @@ export class AccountManager {
 					importFingerprint: imported.fingerprint,
 				},
 			);
-			if (existingImported && existingImported !== matchingAccount) {
-				if (existingImported.importMode === "synthetic") {
-					changed = this.removeAccountRecord(existingImported) || changed;
-				} else {
-					changed = this.clearImportedLink(existingImported) || changed;
-				}
+			if (linkedImported && linkedImported !== matchingAccount) {
+				changed = this.clearImportedLink(linkedImported) || changed;
+			}
+			if (syntheticImported) {
+				changed = this.removeAccountRecord(syntheticImported) || changed;
 			}
 			if (changed) {
 				this.save();
@@ -371,17 +405,24 @@ export class AccountManager {
 			return changed;
 		}
 
-		if (existingImported?.importMode === "synthetic") {
-			const target = this.getAccount(imported.identifier);
+		if (linkedImported) {
+			const changed = this.clearImportedLink(linkedImported);
+			if (changed) {
+				this.save();
+				this.notifyStateChanged();
+			}
+		}
+
+		if (syntheticImported) {
 			let changed = false;
-			if (!target && existingImported.email !== imported.identifier) {
+			if (syntheticImported.email !== imported.identifier) {
 				changed = this.updateAccountEmail(
-					existingImported,
+					syntheticImported,
 					imported.identifier,
 				);
 			}
 			changed =
-				this.applyCredentials(existingImported, imported.credentials, {
+				this.applyCredentials(syntheticImported, imported.credentials, {
 					importSource: "pi-openai-codex",
 					importMode: "synthetic",
 					importFingerprint: imported.fingerprint,
@@ -391,14 +432,6 @@ export class AccountManager {
 				this.notifyStateChanged();
 			}
 			return changed;
-		}
-
-		if (existingImported) {
-			const changed = this.clearImportedLink(existingImported);
-			if (changed) {
-				this.save();
-				this.notifyStateChanged();
-			}
 		}
 
 		this.addOrUpdateAccount(imported.identifier, imported.credentials, {
