@@ -1,3 +1,10 @@
+# [2.2.0](https://github.com/victor-software-house/pi-multicodex/compare/v2.1.5...v2.2.0) (2026-03-29)
+
+
+### Features
+
+* improve multicodex accounts panel ui ([5849459](https://github.com/victor-software-house/pi-multicodex/commit/5849459aa10154cf520395835d757b4209c9197a))
+
 ## [2.1.5](https://github.com/victor-software-house/pi-multicodex/compare/v2.1.4...v2.1.5) (2026-03-29)
 
 
