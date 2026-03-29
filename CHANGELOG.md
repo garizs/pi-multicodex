@@ -1,3 +1,10 @@
+## [2.2.1](https://github.com/victor-software-house/pi-multicodex/compare/v2.2.0...v2.2.1) (2026-03-29)
+
+
+### Bug Fixes
+
+* treat pi auth as read-only ([c7f301e](https://github.com/victor-software-house/pi-multicodex/commit/c7f301e41bd51ecb4771e5c7a3e90fca5bfd0b43))
+
 # [2.2.0](https://github.com/victor-software-house/pi-multicodex/compare/v2.1.5...v2.2.0) (2026-03-29)
 
 
