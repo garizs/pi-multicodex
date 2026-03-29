@@ -421,4 +421,66 @@ describe("manual account selection", () => {
 		expect(headers[1]).toBe("auto@example.com");
 		expect(activateCount).toBe(1);
 	});
+
+	it("skips auth-broken accounts before streaming and retries a healthy one", async () => {
+		const broken = makeAccount("broken@example.com");
+		const healthy = makeAccount("healthy@example.com");
+		let activateCount = 0;
+		const headers: string[] = [];
+		const events: Array<{ type?: string }> = [];
+
+		const accountManager = {
+			syncImportedOpenAICodexAuth: async () => false,
+			getAvailableManualAccount: () => undefined,
+			hasManualAccount: () => false,
+			clearManualAccount: () => {},
+			activateBestAccount: async (options?: {
+				excludeEmails?: Set<string>;
+			}) => {
+				activateCount += 1;
+				return options?.excludeEmails?.has(broken.email) ? healthy : broken;
+			},
+			ensureValidToken: async (account: Account) => {
+				if (account.email === broken.email) {
+					throw new Error("refresh failed");
+				}
+				return "healthy-token";
+			},
+			handleQuotaExceeded: async () => {},
+		} as unknown as AccountManager;
+
+		const baseProvider = {
+			streamSimple: (
+				model: { headers?: Record<string, string> },
+				_context: unknown,
+				_options?: unknown,
+			) => {
+				headers.push(model.headers?.["X-Multicodex-Account"] || "");
+				async function* inner() {
+					yield { type: "done" };
+				}
+				return inner() as unknown as AsyncIterable<{ type: string }>;
+			},
+		};
+
+		const stream = createStreamWrapper(
+			accountManager,
+			baseProvider as unknown as BaseProvider,
+		)(
+			{
+				id: "test",
+				provider: "openai-codex",
+				api: "openai-codex-responses",
+			} as StreamModel,
+			{} as StreamContext,
+		);
+
+		for await (const event of stream) {
+			events.push(event as { type?: string });
+		}
+
+		expect(activateCount).toBe(2);
+		expect(headers).toEqual(["healthy@example.com"]);
+		expect(events.some((event) => event.type === "error")).toBe(false);
+	});
 });

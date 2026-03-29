@@ -59,13 +59,22 @@ describe("registerCommands", () => {
 		};
 
 		const subcommands = commandOptions.getArgumentCompletions("");
+		expect(subcommands?.map((item) => item.value)).toContain("accounts");
 		expect(subcommands?.map((item) => item.value)).toContain("show");
 		expect(subcommands?.map((item) => item.value)).toContain("use");
+		expect(subcommands?.map((item) => item.value)).toContain("refresh");
+		expect(subcommands?.map((item) => item.value)).toContain("reauth");
 
 		const useAccounts = commandOptions.getArgumentCompletions("use a");
 		expect(useAccounts).toEqual([
 			{ value: "use alpha@example.com", label: "alpha@example.com" },
 		]);
+
+		const refreshAccounts = commandOptions.getArgumentCompletions("refresh a");
+		expect(refreshAccounts).toContainEqual({
+			value: "refresh alpha@example.com",
+			label: "alpha@example.com",
+		});
 	});
 
 	it("shows a non-interactive warning when no subcommand is provided", async () => {

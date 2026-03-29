@@ -64,7 +64,19 @@ export function createStreamWrapper(
 						);
 					}
 
-					const token = await accountManager.ensureValidToken(account);
+					let token: string;
+					try {
+						token = await accountManager.ensureValidToken(account);
+					} catch (error) {
+						if (usingManual) {
+							accountManager.clearManualAccount();
+						}
+						excludedEmails.add(account.email);
+						if (attempt < MAX_ROTATION_RETRIES) {
+							continue;
+						}
+						throw error;
+					}
 					const abortController = createLinkedAbortController(options?.signal);
 
 					const internalModel: Model<"openai-codex-responses"> = {

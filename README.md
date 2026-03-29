@@ -23,12 +23,13 @@ To manage your accounts inside a session, type `/multicodex`.
 When you start a session, MultiCodex:
 
 1. Imports your existing pi Codex auth automatically (if present).
-2. Checks usage data across all managed accounts.
-3. Picks the best available account — untouched accounts first, then the one whose weekly reset window ends soonest, then a random available account as fallback.
+2. Merges duplicate imported credentials into the managed pool so one account does not consume multiple rotation slots.
+3. Checks usage data across all managed accounts.
+4. Picks the best available account — untouched accounts first, then the one whose weekly reset window ends soonest, then a random available account as fallback.
 
-If you pin a specific account with `/multicodex use`, that account is used until it hits quota or you clear the override.
+If you pin a specific account from `/multicodex accounts` or `/multicodex use`, that account is used until it hits quota, fails auth validation, or you clear the override.
 
-When a request hits a quota or rate limit **before** any output is streamed, MultiCodex marks that account exhausted, picks the next available one, and retries. This happens up to 5 times transparently. If the manual override account fails, the override is cleared and rotation continues with the remaining accounts. Once output has started streaming, the error is surfaced as-is — no mid-stream account switching.
+When a request hits a quota or rate limit **before** any output is streamed, MultiCodex marks that account exhausted, picks the next available one, and retries. This happens up to 5 times transparently. If token validation or token refresh fails before the request starts, MultiCodex skips that account and retries another healthy one. If the manual override account fails, the override is cleared and rotation continues with the remaining accounts. Once output has started streaming, the error is surfaced as-is — no mid-stream account switching.
 
 ## Commands
 
@@ -37,27 +38,35 @@ Everything lives under one command: `/multicodex`.
 | Command | What it does |
 |---|---|
 | `/multicodex` | Open the main interactive menu |
-| `/multicodex show` | Print account status and cached usage |
-| `/multicodex use [identifier]` | Activate an account, or open the picker if no identifier given |
+| `/multicodex accounts [identifier]` | Inspect account health, select an account, add one, or directly activate/login by identifier |
+| `/multicodex use [identifier]` | Alias for `/multicodex accounts [identifier]` |
+| `/multicodex show` | Alias for the account-management view; in non-interactive mode it prints per-account health lines |
+| `/multicodex refresh [identifier\|all]` | Refresh token validity and usage data for one account or all accounts |
+| `/multicodex reauth [identifier]` | Re-authenticate one account explicitly |
 | `/multicodex footer` | Configure the usage footer display |
 | `/multicodex rotation` | Show the current rotation policy |
-| `/multicodex verify` | Check that local storage paths are writable |
+| `/multicodex verify` | Check storage, settings, auth import, and reauth health |
 | `/multicodex path` | Print storage and settings file locations |
 | `/multicodex reset [manual\|quota\|all]` | Clear manual override, quota cooldowns, or both |
 | `/multicodex help` | Print a compact usage line |
 
-All subcommands support dynamic autocomplete. `/multicodex use` also autocompletes from your managed account list.
+All subcommands support dynamic autocomplete. Account-focused subcommands autocomplete from the managed account list.
 
-Commands that do not need a UI panel (`show`, `verify`, `path`, `reset`, `help`) work in non-interactive mode too.
+Commands that do not need a UI panel (`show`, `refresh`, `verify`, `path`, `reset`, `help`) work in non-interactive mode too.
 
-## Account picker
+## Account manager
 
-The `/multicodex use` picker lets you select, add, and remove accounts in one place.
+The `/multicodex accounts` panel merges the old `show` and `use` flows into one place.
 
 ![MultiCodex use picker](./assets/multicodex-use-picker.png)
 
 - **Enter** activates the highlighted account.
-- **Backspace** removes it (after confirmation).
+- **U** refreshes token and usage health for the selected account.
+- **R** re-authenticates the selected account.
+- **N** starts login for a new managed account.
+- **Backspace** removes the selected account after confirmation.
+
+Each row shows the account identifier, active/manual state, reauth state, quota state, linked imported auth state, and cached 5-hour and weekly usage windows.
 
 When you remove an active account, MultiCodex switches to the next available one automatically.
 
@@ -74,8 +83,8 @@ You can customize which fields appear and their ordering with `/multicodex foote
 ## What it does under the hood
 
 - **Provider override.** MultiCodex registers itself as the `openai-codex` provider. You do not need to select a different provider or change your model — it works with whatever Codex model you already use.
-- **Auth import.** When pi has stored Codex OAuth credentials, MultiCodex imports them automatically. You can also add accounts manually with `/multicodex use <email>`.
-- **Token refresh.** OAuth tokens are refreshed before expiry so requests do not fail due to stale credentials.
+- **Auth import.** When pi has stored Codex OAuth credentials, MultiCodex imports them automatically and merges duplicate credentials into existing managed accounts when possible.
+- **Token refresh.** OAuth tokens are refreshed before expiry so requests do not fail due to stale credentials. You can also force a health refresh with `/multicodex refresh` or re-authenticate explicitly with `/multicodex reauth`.
 - **Usage tracking.** Usage data is fetched from the Codex API and cached for 5 minutes per account. The footer renders cached data immediately and refreshes in the background.
 - **Quota cooldown.** When an account is exhausted, it stays on cooldown until its next known reset time (or 1 hour if the reset time is unknown).
 - **Shared utility seams.** Provider mirroring, stream primitives, and `~/.pi/agent/*` path helpers are shared with `pi-credential-vault` through `@victor-software-house/pi-provider-utils`. MultiCodex still owns account storage, token policy, footer behavior, and command UX.

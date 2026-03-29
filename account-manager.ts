@@ -83,39 +83,153 @@ export class AccountManager {
 		this.warningHandler = handler;
 	}
 
+	private updateAccountEmail(account: Account, email: string): boolean {
+		if (account.email === email) return false;
+		const previousEmail = account.email;
+		account.email = email;
+		if (this.data.activeEmail === previousEmail) {
+			this.data.activeEmail = email;
+		}
+		if (this.manualEmail === previousEmail) {
+			this.manualEmail = email;
+		}
+		const cached = this.usageCache.get(previousEmail);
+		if (cached) {
+			this.usageCache.delete(previousEmail);
+			this.usageCache.set(email, cached);
+		}
+		return true;
+	}
+
+	private removeAccountRecord(account: Account): boolean {
+		const index = this.data.accounts.findIndex(
+			(candidate) => candidate.email === account.email,
+		);
+		if (index < 0) return false;
+		const removedEmail = this.data.accounts[index]?.email;
+		this.data.accounts.splice(index, 1);
+		if (removedEmail) {
+			this.usageCache.delete(removedEmail);
+			if (this.manualEmail === removedEmail) {
+				this.manualEmail = undefined;
+			}
+			if (this.data.activeEmail === removedEmail) {
+				this.data.activeEmail = this.data.accounts[0]?.email;
+			}
+		}
+		return true;
+	}
+
+	private findAccountByRefreshToken(
+		refreshToken: string,
+		excludeEmail?: string,
+	): Account | undefined {
+		return this.data.accounts.find(
+			(account) =>
+				account.refreshToken === refreshToken && account.email !== excludeEmail,
+		);
+	}
+
+	private applyCredentials(
+		account: Account,
+		creds: OAuthCredentials,
+		options?: {
+			importSource?: "pi-openai-codex";
+			importFingerprint?: string;
+		},
+	): boolean {
+		const accountId =
+			typeof creds.accountId === "string" ? creds.accountId : undefined;
+		let changed = false;
+		if (account.accessToken !== creds.access) {
+			account.accessToken = creds.access;
+			changed = true;
+		}
+		if (account.refreshToken !== creds.refresh) {
+			account.refreshToken = creds.refresh;
+			changed = true;
+		}
+		if (account.expiresAt !== creds.expires) {
+			account.expiresAt = creds.expires;
+			changed = true;
+		}
+		if (accountId && account.accountId !== accountId) {
+			account.accountId = accountId;
+			changed = true;
+		}
+		if (
+			options?.importSource &&
+			account.importSource !== options.importSource
+		) {
+			account.importSource = options.importSource;
+			changed = true;
+		}
+		if (
+			options?.importFingerprint &&
+			account.importFingerprint !== options.importFingerprint
+		) {
+			account.importFingerprint = options.importFingerprint;
+			changed = true;
+		}
+		if (account.needsReauth) {
+			account.needsReauth = undefined;
+			changed = true;
+		}
+		return changed;
+	}
+
 	addOrUpdateAccount(
 		email: string,
 		creds: OAuthCredentials,
 		options?: {
 			importSource?: "pi-openai-codex";
 			importFingerprint?: string;
+			preserveActive?: boolean;
 		},
-	): void {
+	): Account {
 		const existing = this.getAccount(email);
-		const accountId =
-			typeof creds.accountId === "string" ? creds.accountId : undefined;
-		if (existing) {
-			existing.accessToken = creds.access;
-			existing.refreshToken = creds.refresh;
-			existing.expiresAt = creds.expires;
-			existing.importSource = options?.importSource;
-			existing.importFingerprint = options?.importFingerprint;
-			existing.needsReauth = undefined;
-			if (accountId) {
-				existing.accountId = accountId;
+		const duplicate = existing
+			? undefined
+			: this.findAccountByRefreshToken(creds.refresh);
+		let target = existing ?? duplicate;
+		let changed = false;
+
+		if (target) {
+			if (
+				duplicate?.importSource === "pi-openai-codex" &&
+				duplicate.email !== email &&
+				!this.getAccount(email)
+			) {
+				changed = this.updateAccountEmail(duplicate, email) || changed;
 			}
+			changed = this.applyCredentials(target, creds, options) || changed;
 		} else {
-			this.data.accounts.push({
+			target = {
 				email,
 				accessToken: creds.access,
 				refreshToken: creds.refresh,
 				expiresAt: creds.expires,
-				accountId,
+				accountId:
+					typeof creds.accountId === "string" ? creds.accountId : undefined,
 				importSource: options?.importSource,
 				importFingerprint: options?.importFingerprint,
-			});
+			};
+			this.data.accounts.push(target);
+			changed = true;
 		}
-		this.setActiveAccount(email);
+
+		if (!options?.preserveActive) {
+			if (this.data.activeEmail !== target.email) {
+				this.setActiveAccount(target.email);
+				return target;
+			}
+		}
+
+		if (changed) {
+			this.save();
+			this.notifyStateChanged();
+		}
+		return target;
 	}
 
 	getActiveAccount(): Account | undefined {
@@ -172,23 +286,68 @@ export class AccountManager {
 		if (!imported) return false;
 
 		const existingImported = this.getImportedAccount();
-		if (
-			existingImported?.importFingerprint === imported.fingerprint &&
-			existingImported.email === imported.identifier
-		) {
+		if (existingImported?.importFingerprint === imported.fingerprint) {
 			return false;
 		}
 
-		if (existingImported && existingImported.email !== imported.identifier) {
-			const target = this.getAccount(imported.identifier);
-			if (!target) {
-				existingImported.email = imported.identifier;
+		const matchingAccount = this.findAccountByRefreshToken(
+			imported.credentials.refresh,
+			existingImported?.email,
+		);
+		if (matchingAccount) {
+			const wasActiveImported =
+				existingImported && this.data.activeEmail === existingImported.email;
+			const wasManualImported =
+				existingImported && this.manualEmail === existingImported.email;
+			let changed = this.applyCredentials(
+				matchingAccount,
+				imported.credentials,
+				{
+					importSource: "pi-openai-codex",
+					importFingerprint: imported.fingerprint,
+				},
+			);
+			if (existingImported && existingImported !== matchingAccount) {
+				changed = this.removeAccountRecord(existingImported) || changed;
+				if (wasActiveImported) {
+					this.data.activeEmail = matchingAccount.email;
+				}
+				if (wasManualImported) {
+					this.manualEmail = matchingAccount.email;
+				}
 			}
+			if (changed) {
+				this.save();
+				this.notifyStateChanged();
+			}
+			return changed;
+		}
+
+		if (existingImported) {
+			const target = this.getAccount(imported.identifier);
+			let changed = false;
+			if (!target && existingImported.email !== imported.identifier) {
+				changed = this.updateAccountEmail(
+					existingImported,
+					imported.identifier,
+				);
+			}
+			changed =
+				this.applyCredentials(existingImported, imported.credentials, {
+					importSource: "pi-openai-codex",
+					importFingerprint: imported.fingerprint,
+				}) || changed;
+			if (changed) {
+				this.save();
+				this.notifyStateChanged();
+			}
+			return changed;
 		}
 
 		this.addOrUpdateAccount(imported.identifier, imported.credentials, {
 			importSource: "pi-openai-codex",
 			importFingerprint: imported.fingerprint,
+			preserveActive: true,
 		});
 		return true;
 	}
@@ -230,19 +389,10 @@ export class AccountManager {
 	}
 
 	removeAccount(email: string): boolean {
-		const index = this.data.accounts.findIndex(
-			(account) => account.email === email,
-		);
-		if (index < 0) return false;
-
-		this.data.accounts.splice(index, 1);
-		this.usageCache.delete(email);
-		if (this.manualEmail === email) {
-			this.manualEmail = undefined;
-		}
-		if (this.data.activeEmail === email) {
-			this.data.activeEmail = this.data.accounts[0]?.email;
-		}
+		const account = this.getAccount(email);
+		if (!account) return false;
+		const removed = this.removeAccountRecord(account);
+		if (!removed) return false;
 		this.save();
 		this.notifyStateChanged();
 		return true;

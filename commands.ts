@@ -17,6 +17,7 @@ import {
 import { getAgentSettingsPath } from "pi-provider-utils/agent-paths";
 import { normalizeUnknownError } from "pi-provider-utils/streams";
 import type { AccountManager } from "./account-manager";
+import { writeActiveTokenToAuthJson } from "./auth";
 import { openLoginInBrowser } from "./browser";
 import type { createUsageStatusController } from "./status";
 import { STORAGE_FILE } from "./storage";
@@ -24,12 +25,15 @@ import { formatResetAt, isUsageUntouched } from "./usage";
 
 const SETTINGS_FILE = getAgentSettingsPath();
 const NO_ACCOUNTS_MESSAGE =
-	"No managed accounts found. Use /multicodex use <identifier> first.";
+	"No managed accounts found. Open /multicodex accounts to add one.";
 const HELP_TEXT =
-	"Usage: /multicodex [show|use [identifier]|footer|rotation|verify|path|reset [manual|quota|all]|help]";
+	"Usage: /multicodex [accounts [identifier]|use [identifier]|show|refresh [identifier|all]|reauth [identifier]|footer|rotation|verify|path|reset [manual|quota|all]|help]";
 const SUBCOMMANDS = [
-	"show",
+	"accounts",
 	"use",
+	"show",
+	"refresh",
+	"reauth",
 	"footer",
 	"rotation",
 	"verify",
@@ -44,7 +48,10 @@ type ResetTarget = (typeof RESET_TARGETS)[number];
 
 type AccountPanelResult =
 	| { action: "select"; email: string }
+	| { action: "refresh"; email: string }
+	| { action: "reauth"; email: string }
 	| { action: "remove"; email: string }
+	| { action: "add" }
 	| undefined;
 
 function toAutocompleteItems(values: readonly string[]): AutocompleteItem[] {
@@ -80,18 +87,6 @@ function parseResetTarget(value: string): ResetTarget | undefined {
 	return undefined;
 }
 
-function getAccountLabel(
-	email: string,
-	options?: { quotaExhaustedUntil?: number; needsReauth?: boolean },
-): string {
-	const tags: string[] = [];
-	if (options?.needsReauth) tags.push("Reauth");
-	if (options?.quotaExhaustedUntil && options.quotaExhaustedUntil > Date.now())
-		tags.push("Quota");
-	if (tags.length === 0) return email;
-	return `${email} (${tags.join(", ")})`;
-}
-
 function formatAccountStatusLine(
 	accountManager: AccountManager,
 	email: string,
@@ -104,7 +99,7 @@ function formatAccountStatusLine(
 	const quotaHit =
 		account.quotaExhaustedUntil && account.quotaExhaustedUntil > Date.now();
 	const untouched = isUsageUntouched(usage) ? "untouched" : null;
-	const imported = account.importSource ? "imported" : null;
+	const imported = account.importSource ? "linked-auth" : null;
 	const reauth = account.needsReauth ? "needs reauth" : null;
 	const tags = [
 		active?.email === account.email ? "active" : null,
@@ -134,7 +129,8 @@ function getSubcommandCompletions(prefix: string): AutocompleteItem[] | null {
 	return matches.length > 0 ? toAutocompleteItems(matches) : null;
 }
 
-function getUseCompletions(
+function getAccountCompletions(
+	subcommand: "accounts" | "use" | "reauth",
 	prefix: string,
 	accountManager: AccountManager,
 ): AutocompleteItem[] | null {
@@ -143,7 +139,26 @@ function getUseCompletions(
 		.map((account) => account.email)
 		.filter((value) => value.startsWith(prefix));
 	if (matches.length === 0) return null;
-	return matches.map((value) => ({ value: `use ${value}`, label: value }));
+	return matches.map((value) => ({
+		value: `${subcommand} ${value}`,
+		label: value,
+	}));
+}
+
+function getRefreshCompletions(
+	prefix: string,
+	accountManager: AccountManager,
+): AutocompleteItem[] | null {
+	const values = [
+		"all",
+		...accountManager.getAccounts().map((account) => account.email),
+	].filter((value, index, array) => array.indexOf(value) === index);
+	const matches = values.filter((value) => value.startsWith(prefix));
+	if (matches.length === 0) return null;
+	return matches.map((value) => ({
+		value: `refresh ${value}`,
+		label: value,
+	}));
 }
 
 function getResetCompletions(prefix: string): AutocompleteItem[] | null {
@@ -169,8 +184,17 @@ function getCommandCompletions(
 	const subcommand = trimmedStart.slice(0, firstSpaceIndex).toLowerCase();
 	const rest = trimmedStart.slice(firstSpaceIndex + 1).trimStart();
 
+	if (subcommand === "accounts") {
+		return getAccountCompletions("accounts", rest, accountManager);
+	}
 	if (subcommand === "use") {
-		return getUseCompletions(rest, accountManager);
+		return getAccountCompletions("use", rest, accountManager);
+	}
+	if (subcommand === "reauth") {
+		return getAccountCompletions("reauth", rest, accountManager);
+	}
+	if (subcommand === "refresh") {
+		return getRefreshCompletions(rest, accountManager);
 	}
 	if (subcommand === "reset") {
 		return getResetCompletions(rest);
@@ -184,7 +208,7 @@ async function loginAndActivateAccount(
 	ctx: ExtensionCommandContext,
 	accountManager: AccountManager,
 	identifier: string,
-): Promise<boolean> {
+): Promise<string | undefined> {
 	try {
 		ctx.ui.notify(
 			`Starting login for ${identifier}... Check your browser.`,
@@ -200,13 +224,23 @@ async function loginAndActivateAccount(
 			onPrompt: async ({ message }) => (await ctx.ui.input(message)) || "",
 		});
 
-		accountManager.addOrUpdateAccount(identifier, creds);
-		accountManager.setManualAccount(identifier);
-		ctx.ui.notify(`Now using ${identifier}`, "info");
-		return true;
+		const account = accountManager.addOrUpdateAccount(identifier, creds);
+		if (account.importSource) {
+			writeActiveTokenToAuthJson({
+				access: creds.access,
+				refresh: creds.refresh,
+				expires: creds.expires,
+				accountId:
+					typeof creds.accountId === "string" ? creds.accountId : undefined,
+			});
+			await accountManager.syncImportedOpenAICodexAuth();
+		}
+		accountManager.setManualAccount(account.email);
+		ctx.ui.notify(`Now using ${account.email}`, "info");
+		return account.email;
 	} catch (error) {
 		ctx.ui.notify(`Login failed: ${normalizeUnknownError(error)}`, "error");
-		return false;
+		return undefined;
 	}
 }
 
@@ -220,12 +254,12 @@ async function useOrLoginAccount(
 	if (existing) {
 		try {
 			await accountManager.ensureValidToken(existing);
-			accountManager.setManualAccount(identifier);
-			ctx.ui.notify(`Now using ${identifier}`, "info");
+			accountManager.setManualAccount(existing.email);
+			ctx.ui.notify(`Now using ${existing.email}`, "info");
 			return;
 		} catch {
 			ctx.ui.notify(
-				`Stored auth for ${identifier} is no longer valid. Starting login again.`,
+				`Stored auth for ${existing.email} is no longer valid. Starting login again.`,
 				"warning",
 			);
 		}
@@ -234,33 +268,100 @@ async function useOrLoginAccount(
 	await loginAndActivateAccount(pi, ctx, accountManager, identifier);
 }
 
-async function openAccountSelectionPanel(
+async function refreshSingleAccount(
+	ctx: ExtensionCommandContext,
+	accountManager: AccountManager,
+	email: string,
+): Promise<void> {
+	const account = accountManager.getAccount(email);
+	if (!account) {
+		ctx.ui.notify(`Unknown account: ${email}`, "warning");
+		return;
+	}
+
+	try {
+		await accountManager.ensureValidToken(account);
+	} catch (error) {
+		ctx.ui.notify(
+			`refresh ${email}: ${normalizeUnknownError(error)}`,
+			"warning",
+		);
+		return;
+	}
+
+	await accountManager.refreshUsageForAccount(account, { force: true });
+	ctx.ui.notify(
+		`refreshed ${formatAccountStatusLine(accountManager, email)}`,
+		"info",
+	);
+}
+
+async function refreshAllAccounts(
+	ctx: ExtensionCommandContext,
+	accountManager: AccountManager,
+): Promise<void> {
+	await accountManager.refreshUsageForAllAccounts({ force: true });
+	const accounts = accountManager.getAccounts();
+	const needsReauth = accountManager.getAccountsNeedingReauth().length;
+	const summary =
+		accounts.length === 0
+			? NO_ACCOUNTS_MESSAGE
+			: `refreshed ${accounts.length} account(s); reauth needed=${needsReauth}`;
+	ctx.ui.notify(summary, needsReauth > 0 ? "warning" : "info");
+}
+
+async function reauthenticateAccount(
+	pi: ExtensionAPI,
+	ctx: ExtensionCommandContext,
+	accountManager: AccountManager,
+	email: string,
+): Promise<void> {
+	const account = accountManager.getAccount(email);
+	if (!account) {
+		ctx.ui.notify(`Unknown account: ${email}`, "warning");
+		return;
+	}
+	await loginAndActivateAccount(pi, ctx, accountManager, account.email);
+}
+
+async function promptForNewAccountIdentifier(
+	ctx: ExtensionCommandContext,
+): Promise<string | undefined> {
+	const identifier = (await ctx.ui.input("Account identifier"))?.trim();
+	if (!identifier) {
+		ctx.ui.notify("Account creation cancelled.", "warning");
+		return undefined;
+	}
+	return identifier;
+}
+
+async function openAccountManagementPanel(
 	ctx: ExtensionCommandContext,
 	accountManager: AccountManager,
 ): Promise<AccountPanelResult> {
 	const accounts = accountManager.getAccounts();
 	const items = accounts.map((account) => ({
 		value: account.email,
-		label: getAccountLabel(account.email, {
-			quotaExhaustedUntil: account.quotaExhaustedUntil,
-			needsReauth: account.needsReauth,
-		}),
+		label: formatAccountStatusLine(accountManager, account.email),
 	}));
 
 	return ctx.ui.custom<AccountPanelResult>((_tui, theme, _kb, done) => {
 		const container = new Container();
 		container.addChild(
-			new Text(theme.fg("accent", theme.bold("Select Account")), 1, 0),
+			new Text(theme.fg("accent", theme.bold("MultiCodex Accounts")), 1, 0),
 		);
 		container.addChild(
 			new Text(
-				theme.fg("dim", "Enter: use  Backspace: remove account  Esc: cancel"),
+				theme.fg(
+					"dim",
+					"Enter: use  U: refresh  R: re-auth  N: add  Backspace: remove  Esc: cancel",
+				),
 				1,
 				0,
 			),
 		);
 
-		const selectList = new SelectList(items, 10, getSelectListTheme());
+		const selectList = new SelectList(items, 12, getSelectListTheme());
 		selectList.onSelect = (item) => {
 			done({ action: "select", email: item.value });
 		};
@@ -271,8 +372,20 @@ async function openAccountSelectionPanel(
 			render: (width: number) => container.render(width),
 			invalidate: () => container.invalidate(),
 			handleInput: (data: string) => {
+				if (data.toLowerCase() === "n") {
+					done({ action: "add" });
+					return;
+				}
+				const selected = selectList.getSelectedItem();
+				if (selected && data.toLowerCase() === "u") {
+					done({ action: "refresh", email: selected.value });
+					return;
+				}
+				if (selected && data.toLowerCase() === "r") {
+					done({ action: "reauth", email: selected.value });
+					return;
+				}
 				if (matchesKey(data, Key.backspace)) {
-					const selected = selectList.getSelectedItem();
 					if (selected) {
 						done({ action: "remove", email: selected.value });
 					}
@@ -284,7 +397,8 @@ async function openAccountSelectionPanel(
 	});
 }
 
-async function openAccountSelectionFlow(
+async function openAccountManagementFlow(
+	pi: ExtensionAPI,
 	ctx: ExtensionCommandContext,
 	accountManager: AccountManager,
 	statusController: ReturnType<typeof createUsageStatusController>,
@@ -292,18 +406,40 @@ async function openAccountSelectionFlow(
 	while (true) {
 		const accounts = accountManager.getAccounts();
 		if (accounts.length === 0) {
-			ctx.ui.notify(NO_ACCOUNTS_MESSAGE, "warning");
+			const identifier = await promptForNewAccountIdentifier(ctx);
+			if (!identifier) return;
+			await loginAndActivateAccount(pi, ctx, accountManager, identifier);
+			await statusController.refreshFor(ctx);
+			continue;
+		}
+
+		const result = await openAccountManagementPanel(ctx, accountManager);
+		if (!result) return;
+
+		if (result.action === "add") {
+			const identifier = await promptForNewAccountIdentifier(ctx);
+			if (!identifier) continue;
+			await loginAndActivateAccount(pi, ctx, accountManager, identifier);
+			await statusController.refreshFor(ctx);
+			continue;
+		}
+
+		if (result.action === "select") {
+			await useOrLoginAccount(pi, ctx, accountManager, result.email);
+			await statusController.refreshFor(ctx);
 			return;
 		}
 
-		const result = await openAccountSelectionPanel(ctx, accountManager);
-		if (!result) return;
-
-		if (result.action === "select") {
-			accountManager.setManualAccount(result.email);
-			ctx.ui.notify(`Now using ${result.email}`, "info");
+		if (result.action === "refresh") {
+			await refreshSingleAccount(ctx, accountManager, result.email);
 			await statusController.refreshFor(ctx);
-			return;
+			continue;
+		}
+
+		if (result.action === "reauth") {
+			await reauthenticateAccount(pi, ctx, accountManager, result.email);
+			await statusController.refreshFor(ctx);
+			continue;
 		}
 
 		const accountToRemove = accountManager.getAccount(result.email);
@@ -325,32 +461,50 @@ async function openAccountSelectionFlow(
 	}
 }
 
-async function runShowSubcommand(
+async function runAccountsSubcommand(
+	pi: ExtensionAPI,
 	ctx: ExtensionCommandContext,
 	accountManager: AccountManager,
+	statusController: ReturnType<typeof createUsageStatusController>,
+	rest: string,
 ): Promise<void> {
 	await accountManager.syncImportedOpenAICodexAuth();
 	await accountManager.refreshUsageForAllAccounts();
+
+	if (rest) {
+		await useOrLoginAccount(pi, ctx, accountManager, rest);
+		await statusController.refreshFor(ctx);
+		return;
+	}
+
 	const accounts = accountManager.getAccounts();
 	if (accounts.length === 0) {
-		ctx.ui.notify(NO_ACCOUNTS_MESSAGE, "warning");
+		if (!ctx.hasUI) {
+			ctx.ui.notify(NO_ACCOUNTS_MESSAGE, "warning");
+			return;
+		}
+		await openAccountManagementFlow(pi, ctx, accountManager, statusController);
 		return;
 	}
 
 	if (!ctx.hasUI) {
-		const active = accountManager.getActiveAccount()?.email ?? "none";
-		const manual = accountManager.getManualAccount()?.email ?? "none";
-		ctx.ui.notify(
-			`multicodex: accounts=${accounts.length} active=${active} manual=${manual}`,
-			"info",
+		const lines = accounts.map((account) =>
+			formatAccountStatusLine(accountManager, account.email),
 		);
+		ctx.ui.notify(lines.join("\n"), "info");
 		return;
 	}
 
-	const options = accounts.map((account) =>
-		formatAccountStatusLine(accountManager, account.email),
-	);
-	await ctx.ui.select("MultiCodex Accounts", options);
+	await openAccountManagementFlow(pi, ctx, accountManager, statusController);
+}
+
+async function runShowSubcommand(
+	pi: ExtensionAPI,
+	ctx: ExtensionCommandContext,
+	accountManager: AccountManager,
+	statusController: ReturnType<typeof createUsageStatusController>,
+): Promise<void> {
+	await runAccountsSubcommand(pi, ctx, accountManager, statusController, "");
 }
 
 async function runFooterSubcommand(
@@ -374,16 +528,14 @@ async function runRotationSubcommand(
 	ctx: ExtensionCommandContext,
 ): Promise<void> {
 	const lines = [
-		"Rotation settings are not configurable yet.",
-		"Current policy: manual account, then untouched accounts, then earliest weekly reset, then random fallback.",
-		"Quota cooldown uses next known reset time, with 1 hour fallback when unknown.",
+		"Current policy: manual account first, then untouched accounts, then earliest weekly reset, then random fallback.",
+		"If token validation fails before a request starts, MultiCodex skips that account and retries another one.",
+		"If a request hits quota or rate limit before any output streams, MultiCodex marks the account on cooldown and retries.",
+		"Imported pi auth is merged into the managed pool so duplicate credentials do not consume extra rotation slots.",
 	];
 
 	if (!ctx.hasUI) {
-		ctx.ui.notify(
-			"rotation: manual->untouched->earliest-weekly-reset->random, cooldown=next-reset-or-1h",
-			"info",
-		);
+		ctx.ui.notify(lines.join(" "), "info");
 		return;
 	}
 
@@ -412,11 +564,12 @@ async function runVerifySubcommand(
 	await statusController.loadPreferences(ctx);
 	const accounts = accountManager.getAccounts().length;
 	const active = accountManager.getActiveAccount()?.email ?? "none";
-	const ok = storageWritable && settingsWritable;
+	const needsReauth = accountManager.getAccountsNeedingReauth().length;
+	const ok = storageWritable && settingsWritable && needsReauth === 0;
 
 	if (!ctx.hasUI) {
 		ctx.ui.notify(
-			`verify: ${ok ? "PASS" : "WARN"} storage=${storageWritable ? "ok" : "fail"} settings=${settingsWritable ? "ok" : "fail"} accounts=${accounts} active=${active} authImport=${authImported ? "updated" : "unchanged"}`,
+			`verify: ${ok ? "PASS" : "WARN"} storage=${storageWritable ? "ok" : "fail"} settings=${settingsWritable ? "ok" : "fail"} accounts=${accounts} active=${active} authImport=${authImported ? "updated" : "unchanged"} needsReauth=${needsReauth}`,
 			ok ? "info" : "warning",
 		);
 		return;
@@ -427,6 +580,7 @@ async function runVerifySubcommand(
 		`settings directory writable: ${settingsWritable ? "yes" : "no"}`,
 		`managed accounts: ${accounts}`,
 		`active account: ${active}`,
+		`accounts needing re-authentication: ${needsReauth}`,
 		`auth import changed state: ${authImported ? "yes" : "no"}`,
 	];
 	await ctx.ui.select(`MultiCodex Verify (${ok ? "PASS" : "WARN"})`, lines);
@@ -519,7 +673,7 @@ function runHelpSubcommand(ctx: ExtensionCommandContext): void {
 	ctx.ui.notify(HELP_TEXT, "info");
 }
 
-async function runUseSubcommand(
+async function runRefreshSubcommand(
 	pi: ExtensionAPI,
 	ctx: ExtensionCommandContext,
 	accountManager: AccountManager,
@@ -527,22 +681,42 @@ async function runUseSubcommand(
 	rest: string,
 ): Promise<void> {
 	await accountManager.syncImportedOpenAICodexAuth();
+	if (!rest || rest === "all") {
+		if (!ctx.hasUI || rest === "all") {
+			await refreshAllAccounts(ctx, accountManager);
+			await statusController.refreshFor(ctx);
+			return;
+		}
+		await openAccountManagementFlow(pi, ctx, accountManager, statusController);
+		return;
+	}
+	await refreshSingleAccount(ctx, accountManager, rest);
+	await statusController.refreshFor(ctx);
+}
 
+async function runReauthSubcommand(
+	pi: ExtensionAPI,
+	ctx: ExtensionCommandContext,
+	accountManager: AccountManager,
+	statusController: ReturnType<typeof createUsageStatusController>,
+	rest: string,
+): Promise<void> {
+	await accountManager.syncImportedOpenAICodexAuth();
 	if (rest) {
-		await useOrLoginAccount(pi, ctx, accountManager, rest);
+		await reauthenticateAccount(pi, ctx, accountManager, rest);
 		await statusController.refreshFor(ctx);
 		return;
 	}
-
 	if (!ctx.hasUI) {
-		ctx.ui.notify(
-			"/multicodex use requires an identifier in non-interactive mode.",
-			"warning",
-		);
+		const active = accountManager.getActiveAccount();
+		if (!active) {
+			ctx.ui.notify(NO_ACCOUNTS_MESSAGE, "warning");
+			return;
+		}
+		await reauthenticateAccount(pi, ctx, accountManager, active.email);
 		return;
 	}
-
-	await openAccountSelectionFlow(ctx, accountManager, statusController);
+	await openAccountManagementFlow(pi, ctx, accountManager, statusController);
 }
 
 async function runSubcommand(
@@ -553,12 +727,26 @@ async function runSubcommand(
 	accountManager: AccountManager,
 	statusController: ReturnType<typeof createUsageStatusController>,
 ): Promise<void> {
-	if (subcommand === "show") {
-		await runShowSubcommand(ctx, accountManager);
+	if (subcommand === "accounts" || subcommand === "use") {
+		await runAccountsSubcommand(
+			pi,
+			ctx,
+			accountManager,
+			statusController,
+			rest,
+		);
 		return;
 	}
-	if (subcommand === "use") {
-		await runUseSubcommand(pi, ctx, accountManager, statusController, rest);
+	if (subcommand === "show") {
+		await runShowSubcommand(pi, ctx, accountManager, statusController);
+		return;
+	}
+	if (subcommand === "refresh") {
+		await runRefreshSubcommand(pi, ctx, accountManager, statusController, rest);
+		return;
+	}
+	if (subcommand === "reauth") {
+		await runReauthSubcommand(pi, ctx, accountManager, statusController, rest);
 		return;
 	}
 	if (subcommand === "footer") {
@@ -592,8 +780,9 @@ async function openMainPanel(
 	statusController: ReturnType<typeof createUsageStatusController>,
 ): Promise<void> {
 	const actions = [
-		"use: select, activate, or remove managed account",
-		"show: managed account and usage summary",
+		"accounts: inspect, select, refresh, re-authenticate, add, or remove managed account",
+		"refresh: force a health and usage refresh",
+		"reauth: re-authenticate an account",
 		"footer: footer settings panel",
 		"rotation: current rotation behavior",
 		"verify: runtime health checks",
@@ -626,7 +815,8 @@ export function registerCommands(
 	statusController: ReturnType<typeof createUsageStatusController>,
 ): void {
 	pi.registerCommand("multicodex", {
-		description: "Manage MultiCodex accounts, rotation, and footer settings",
+		description:
+			"Manage MultiCodex accounts, health, rotation, and footer settings",
 		getArgumentCompletions: (argumentPrefix: string) =>
 			getCommandCompletions(argumentPrefix, accountManager),
 		handler: async (

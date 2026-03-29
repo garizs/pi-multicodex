@@ -1,3 +1,14 @@
+## Unreleased
+
+### Features
+
+* merge account inspection and account actions into `/multicodex accounts`, with explicit refresh and re-authentication flows
+
+### Bug Fixes
+
+* skip auth-broken accounts during rotation before a request starts
+* merge duplicate imported credentials into existing managed accounts without changing the active account
+
 ## [2.0.13](https://github.com/victor-software-house/pi-multicodex/compare/v2.0.12...v2.0.13) (2026-03-28)
 
 

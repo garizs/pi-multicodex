@@ -20,8 +20,9 @@ The current shipped behavior is:
 - MultiCodex overrides the normal `openai-codex` provider path directly.
 - MultiCodex auto-imports pi's stored `openai-codex` OAuth auth when it is new or changed.
 - MultiCodex uses one `/multicodex` command family with subcommands.
-- `/multicodex use` opens the account picker, supports account removal via `Backspace`, and supports `/multicodex use <identifier>` for direct activation.
-- `/multicodex show`, `/multicodex verify`, `/multicodex path`, `/multicodex reset`, and `/multicodex help` are available without opening a panel.
+- `/multicodex accounts` is the merged account-management surface for inspection, selection, refresh, re-authentication, add, and removal.
+- `/multicodex use` and `/multicodex show` remain aliases into that merged account-management flow.
+- `/multicodex refresh`, `/multicodex verify`, `/multicodex path`, `/multicodex reset`, and `/multicodex help` are available without opening a panel.
 - `/multicodex footer` opens an interactive settings panel with live preview, or prints a summary in non-interactive mode.
 - The usage footer displays severity-based color tiers that shift as quota depletes.
 - Footer settings are stored in `~/.pi/agent/settings.json` under `pi-multicodex`.
@@ -64,10 +65,16 @@ The extension now uses one operator command family.
 
 - `/multicodex`
   - open the main interactive UI
-- `/multicodex show`
-  - show current runtime state and active account summary
+- `/multicodex accounts [identifier]`
+  - inspect, select, refresh, re-authenticate, add, or directly activate an account
 - `/multicodex use [identifier]`
-  - choose or activate an account
+  - alias for `accounts`
+- `/multicodex show`
+  - alias for `accounts`; in non-UI mode it prints per-account health lines
+- `/multicodex refresh [identifier|all]`
+  - force a token and usage health refresh
+- `/multicodex reauth [identifier]`
+  - explicitly re-authenticate an account
 - `/multicodex footer`
   - open footer settings
 - `/multicodex rotation`
@@ -131,12 +138,14 @@ Goal: make account inspection and switching consistent, direct, and easy to unde
 
 - [x] Make account selection explicit and actionable from the main UI
 - [x] Ensure selecting an account actually activates it instead of only displaying it
+- [x] Merge account inspection and account action flows into one `/multicodex accounts` surface
+- [x] Add explicit per-account refresh and re-authentication actions
 - [x] Keep read-only summaries and mutating actions clearly separated
 - [x] Show active account, manual override state, cooldown state, import source, and cached usage in a consistent format
-- [ ] Improve select-or-login flow for unknown or stale identifiers
+- [x] Improve select-or-login flow for unknown or stale identifiers
 - [x] Replace brittle string parsing in selection flows with structured item mapping
 - [ ] Replace imported-account fallback labels with real email identity when it can be derived safely
-- [ ] Make active-account information easier to understand during a session
+- [x] Make active-account information easier to understand during a session
 
 ### UX acceptance criteria
 
@@ -151,6 +160,7 @@ Goal: make account inspection and switching consistent, direct, and easy to unde
    - imported-account origin is clearly marked when relevant
 
 3. **Identity quality**
+   - imported auth is merged into matching managed accounts so duplicate credentials do not distort rotation
    - imported accounts prefer a real email label when derivable safely
    - fallback labels remain deterministic and readable when email cannot be derived
 
