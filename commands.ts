@@ -18,7 +18,6 @@ import {
 import { getAgentSettingsPath } from "pi-provider-utils/agent-paths";
 import { normalizeUnknownError } from "pi-provider-utils/streams";
 import type { AccountManager } from "./account-manager";
-import { writeActiveTokenToAuthJson } from "./auth";
 import { openLoginInBrowser } from "./browser";
 import type { createUsageStatusController } from "./status";
 import { type Account, STORAGE_FILE } from "./storage";
@@ -246,16 +245,10 @@ async function loginAndActivateAccount(
 			onPrompt: async ({ message }) => (await ctx.ui.input(message)) || "",
 		});
 
+		const existing = accountManager.getAccount(identifier);
 		const account = accountManager.addOrUpdateAccount(identifier, creds);
-		if (account.importSource) {
-			writeActiveTokenToAuthJson({
-				access: creds.access,
-				refresh: creds.refresh,
-				expires: creds.expires,
-				accountId:
-					typeof creds.accountId === "string" ? creds.accountId : undefined,
-			});
-			await accountManager.syncImportedOpenAICodexAuth();
+		if (existing?.importSource) {
+			accountManager.detachImportedAuth(account.email);
 		}
 		accountManager.setManualAccount(account.email);
 		ctx.ui.notify(`Now using ${account.email}`, "info");

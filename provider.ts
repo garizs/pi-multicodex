@@ -53,8 +53,7 @@ function getActiveApiKey(accountManager: AccountManager): string {
 			return account.accessToken;
 		}
 	}
-	// Placeholder — AuthStorage will override on every actual API call
-	// as long as auth.json has valid tokens.
+	// Fallback placeholder until MultiCodex resolves a usable managed account.
 	return "pending-login";
 }
 

@@ -2,12 +2,8 @@ import {
 	type OAuthCredentials,
 	refreshOpenAICodexToken,
 } from "@mariozechner/pi-ai/oauth";
-import { AuthStorage } from "@mariozechner/pi-coding-agent";
 import { normalizeUnknownError } from "pi-provider-utils/streams";
-import {
-	loadImportedOpenAICodexAuth,
-	writeActiveTokenToAuthJson,
-} from "./auth";
+import { loadImportedOpenAICodexAuth } from "./auth";
 import { isAccountAvailable, pickBestAccount } from "./selection";
 import {
 	type Account,
@@ -45,23 +41,6 @@ export class AccountManager {
 	private notifyStateChanged(): void {
 		for (const handler of this.stateChangeHandlers) {
 			handler();
-		}
-	}
-
-	/**
-	 * Write the active account's tokens to auth.json so pi's background features
-	 * (rename, compaction) can resolve a valid API key via AuthStorage.
-	 */
-	private syncActiveTokenToAuthJson(account: Account): void {
-		try {
-			writeActiveTokenToAuthJson({
-				access: account.accessToken,
-				refresh: account.refreshToken,
-				expires: account.expiresAt,
-				accountId: account.accountId,
-			});
-		} catch {
-			// Best-effort sync — do not block token resolution.
 		}
 	}
 
@@ -366,6 +345,17 @@ export class AccountManager {
 		return changed;
 	}
 
+	detachImportedAuth(email: string): boolean {
+		const account = this.getAccount(email);
+		if (!account) return false;
+		const changed = this.clearImportedLink(account);
+		if (changed) {
+			this.save();
+			this.notifyStateChanged();
+		}
+		return changed;
+	}
+
 	async syncImportedOpenAICodexAuth(): Promise<boolean> {
 		const imported = await loadImportedOpenAICodexAuth();
 		if (!imported) return false;
@@ -624,12 +614,11 @@ export class AccountManager {
 		}
 
 		if (Date.now() < account.expiresAt - 5 * 60 * 1000) {
-			this.syncActiveTokenToAuthJson(account);
 			return account.accessToken;
 		}
 
-		// For the imported pi account, delegate to AuthStorage so we share pi's
-		// file lock and never race with pi's own refresh path.
+		// Imported auth is read-only. MultiCodex never refreshes or writes
+		// auth.json and instead requires the user to repair pi auth explicitly.
 		if (account.importSource === "pi-openai-codex") {
 			return this.ensureValidTokenForImportedAccount(account);
 		}
@@ -652,7 +641,6 @@ export class AccountManager {
 				}
 				this.save();
 				this.notifyStateChanged();
-				this.syncActiveTokenToAuthJson(account);
 				return account.accessToken;
 			} catch (error) {
 				this.markNeedsReauth(account);
@@ -667,17 +655,14 @@ export class AccountManager {
 	}
 
 	/**
-	 * Refresh path for the imported pi account.
+	 * Read-only path for imported pi auth.
 	 *
-	 * Uses AuthStorage so our refresh is serialised by the same file lock that
-	 * pi's own credential refresh uses. This prevents "refresh_token_reused"
-	 * errors caused by pi and multicodex both refreshing the same token
-	 * simultaneously.
+	 * MultiCodex may read auth.json to mirror pi's currently active Codex auth,
+	 * but it must never refresh or write auth.json itself.
 	 */
 	private async ensureValidTokenForImportedAccount(
 		account: Account,
 	): Promise<string> {
-		// Check if pi already refreshed since our last sync.
 		const latest = await loadImportedOpenAICodexAuth();
 		if (latest && Date.now() < latest.credentials.expires - 5 * 60 * 1000) {
 			account.accessToken = latest.credentials.access;
@@ -696,40 +681,9 @@ export class AccountManager {
 			return account.accessToken;
 		}
 
-		// Both our copy and auth.json are expired — let AuthStorage refresh with
-		// its file lock so only one caller (us or pi) fires the API call.
-		let apiKey: string | undefined;
-		try {
-			const authStorage = AuthStorage.create();
-			apiKey = await authStorage.getApiKey("openai-codex");
-		} catch {
-			// AuthStorage refresh failed; mark for re-auth below.
-		}
-		if (!apiKey) {
-			this.markNeedsReauth(account);
-			throw new Error(
-				`${account.email}: token refresh failed — run /login openai-codex to re-authenticate`,
-			);
-		}
-
-		// Read the refreshed tokens back from auth.json.
-		const refreshed = await loadImportedOpenAICodexAuth();
-		if (refreshed) {
-			account.accessToken = refreshed.credentials.access;
-			account.refreshToken = refreshed.credentials.refresh;
-			account.expiresAt = refreshed.credentials.expires;
-			account.importFingerprint = refreshed.fingerprint;
-			const accountId =
-				typeof refreshed.credentials.accountId === "string"
-					? refreshed.credentials.accountId
-					: undefined;
-			if (accountId) {
-				account.accountId = accountId;
-			}
-			this.save();
-			this.notifyStateChanged();
-		}
-
-		return apiKey;
+		this.markNeedsReauth(account);
+		throw new Error(
+			`${account.email}: imported pi auth is expired — run /login openai-codex to re-authenticate`,
+		);
 	}
 }
