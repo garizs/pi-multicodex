@@ -1,3 +1,10 @@
+## [2.1.3](https://github.com/victor-software-house/pi-multicodex/compare/v2.1.2...v2.1.3) (2026-03-29)
+
+
+### Bug Fixes
+
+* preserve linked accounts when imported auth moves ([bdedb1b](https://github.com/victor-software-house/pi-multicodex/commit/bdedb1b4f87a5531a3059c030b2181ddee2fddab))
+
 ## [2.1.2](https://github.com/victor-software-house/pi-multicodex/compare/v2.1.1...v2.1.2) (2026-03-29)
 
 
