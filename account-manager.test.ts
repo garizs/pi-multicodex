@@ -125,6 +125,55 @@ describe("AccountManager account deduplication", () => {
 		expect(manager.getActiveAccount()?.email).toBe("real@example.com");
 	});
 
+	it("renames synthetic imported accounts when a real email can now be derived", async () => {
+		mocks.storageData.accounts = [
+			{
+				email: "OpenAI Codex acc-123",
+				accessToken: "old-access",
+				refreshToken: "shared-refresh",
+				expiresAt: 100,
+				accountId: "acc-123",
+				importSource: "pi-openai-codex",
+				importMode: "synthetic",
+				importFingerprint: JSON.stringify({
+					access:
+						"eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL3Byb2ZpbGUiOnsiZW1haWwiOiJ2aWN0b3IuYXJhdWpvMTA1QGdtYWlsLmNvbSJ9fQ.sig",
+					refresh: "shared-refresh",
+					expires: 100,
+					accountId: "acc-123",
+				}),
+			},
+		];
+		mocks.loadImportedOpenAICodexAuth.mockResolvedValue({
+			identifier: "victor.araujo105@gmail.com",
+			fingerprint: JSON.stringify({
+				access:
+					"eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL3Byb2ZpbGUiOnsiZW1haWwiOiJ2aWN0b3IuYXJhdWpvMTA1QGdtYWlsLmNvbSJ9fQ.sig",
+				refresh: "shared-refresh",
+				expires: 100,
+				accountId: "acc-123",
+			}),
+			credentials: {
+				access:
+					"eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJodHRwczovL2FwaS5vcGVuYWkuY29tL3Byb2ZpbGUiOnsiZW1haWwiOiJ2aWN0b3IuYXJhdWpvMTA1QGdtYWlsLmNvbSJ9fQ.sig",
+				refresh: "shared-refresh",
+				expires: 100,
+				accountId: "acc-123",
+			},
+		});
+
+		const manager = new AccountManager();
+		const changed = await manager.syncImportedOpenAICodexAuth();
+
+		expect(changed).toBe(true);
+		expect(manager.getAccount("OpenAI Codex acc-123")).toBeUndefined();
+		expect(manager.getAccount("victor.araujo105@gmail.com")).toMatchObject({
+			email: "victor.araujo105@gmail.com",
+			importSource: "pi-openai-codex",
+			importMode: "synthetic",
+		});
+	});
+
 	it("keeps previously linked managed accounts when imported auth moves to another account", async () => {
 		mocks.storageData.accounts = [
 			{

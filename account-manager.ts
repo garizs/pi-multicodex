@@ -335,7 +335,11 @@ export class AccountManager {
 		if (!imported) return false;
 
 		const existingImported = this.getImportedAccount();
-		if (existingImported?.importFingerprint === imported.fingerprint) {
+		if (
+			existingImported?.importFingerprint === imported.fingerprint &&
+			(existingImported.importMode !== "synthetic" ||
+				existingImported.email === imported.identifier)
+		) {
 			return false;
 		}
 

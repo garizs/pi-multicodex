@@ -45,7 +45,44 @@ function getRequiredString(
 	return typeof value === "string" && value.trim() ? value.trim() : undefined;
 }
 
-function createImportedIdentifier(accountId: string): string {
+function decodeJwtPayload(token: string): Record<string, unknown> | undefined {
+	const parts = token.split(".");
+	if (parts.length !== 3) return undefined;
+	const payload = parts[1];
+	if (!payload) return undefined;
+	try {
+		const normalized = payload.replace(/-/g, "+").replace(/_/g, "/");
+		const padded = normalized.padEnd(
+			normalized.length + ((4 - (normalized.length % 4)) % 4),
+			"=",
+		);
+		const decoded = Buffer.from(padded, "base64").toString("utf8");
+		const parsed = JSON.parse(decoded) as unknown;
+		if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+			return undefined;
+		}
+		return parsed as Record<string, unknown>;
+	} catch {
+		return undefined;
+	}
+}
+
+function getProfileEmail(accessToken: string): string | undefined {
+	const payload = decodeJwtPayload(accessToken);
+	const profile = payload?.["https://api.openai.com/profile"];
+	if (!profile || typeof profile !== "object" || Array.isArray(profile)) {
+		return undefined;
+	}
+	const email = (profile as Record<string, unknown>).email;
+	return typeof email === "string" && email.trim() ? email.trim() : undefined;
+}
+
+function createImportedIdentifier(
+	accessToken: string,
+	accountId: string,
+): string {
+	const email = getProfileEmail(accessToken);
+	if (email) return email;
 	return `${IMPORTED_ACCOUNT_PREFIX} ${accountId.slice(0, 8)}`;
 }
 
@@ -84,7 +121,7 @@ export function parseImportedOpenAICodexAuth(
 		accountId,
 	};
 	return {
-		identifier: createImportedIdentifier(accountId ?? "default"),
+		identifier: createImportedIdentifier(access, accountId ?? "default"),
 		fingerprint: createFingerprint({ access, refresh, expires, accountId }),
 		credentials,
 	};
