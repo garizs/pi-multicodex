@@ -5,14 +5,15 @@ import type {
 	ExtensionAPI,
 	ExtensionCommandContext,
 } from "@mariozechner/pi-coding-agent";
-import { getSelectListTheme } from "@mariozechner/pi-coding-agent";
+import { DynamicBorder, rawKeyHint } from "@mariozechner/pi-coding-agent";
 import {
 	type AutocompleteItem,
 	Container,
-	Key,
+	getKeybindings,
 	matchesKey,
-	SelectList,
-	Text,
+	Spacer,
+	truncateToWidth,
+	visibleWidth,
 } from "@mariozechner/pi-tui";
 import { getAgentSettingsPath } from "pi-provider-utils/agent-paths";
 import { normalizeUnknownError } from "pi-provider-utils/streams";
@@ -20,7 +21,7 @@ import type { AccountManager } from "./account-manager";
 import { writeActiveTokenToAuthJson } from "./auth";
 import { openLoginInBrowser } from "./browser";
 import type { createUsageStatusController } from "./status";
-import { STORAGE_FILE } from "./storage";
+import { type Account, STORAGE_FILE } from "./storage";
 import { formatResetAt, isUsageUntouched } from "./usage";
 
 const SETTINGS_FILE = getAgentSettingsPath();
@@ -87,35 +88,42 @@ function parseResetTarget(value: string): ResetTarget | undefined {
 	return undefined;
 }
 
-function formatAccountStatusLine(
+function isPlaceholderAccount(account: Account): boolean {
+	return (
+		!account.accessToken || !account.refreshToken || account.expiresAt <= 0
+	);
+}
+
+function getAccountTags(
 	accountManager: AccountManager,
-	email: string,
-): string {
-	const account = accountManager.getAccount(email);
-	if (!account) return email;
+	account: Account,
+): string[] {
 	const usage = accountManager.getCachedUsage(account.email);
 	const active = accountManager.getActiveAccount();
 	const manual = accountManager.getManualAccount();
 	const quotaHit =
 		account.quotaExhaustedUntil && account.quotaExhaustedUntil > Date.now();
-	const untouched = isUsageUntouched(usage) ? "untouched" : null;
 	const imported = account.importSource
 		? account.importMode === "synthetic"
 			? "pi auth only"
 			: "pi auth"
 		: null;
-	const reauth = account.needsReauth ? "needs reauth" : null;
-	const tags = [
+	return [
 		active?.email === account.email ? "active" : null,
 		manual?.email === account.email ? "manual" : null,
-		reauth,
+		account.needsReauth ? "needs reauth" : null,
+		isPlaceholderAccount(account) ? "placeholder" : null,
 		quotaHit ? "quota" : null,
-		untouched,
+		isUsageUntouched(usage) ? "untouched" : null,
 		imported,
-	]
-		.filter(Boolean)
-		.join(", ");
-	const suffix = tags ? ` (${tags})` : "";
+	].filter((value): value is string => Boolean(value));
+}
+
+function formatUsageSummary(
+	accountManager: AccountManager,
+	account: Account,
+): string {
+	const usage = accountManager.getCachedUsage(account.email);
 	const primaryUsed = usage?.primary?.usedPercent;
 	const secondaryUsed = usage?.secondary?.usedPercent;
 	const primaryReset = usage?.primary?.resetAt;
@@ -124,8 +132,18 @@ function formatAccountStatusLine(
 		primaryUsed === undefined ? "unknown" : `${Math.round(primaryUsed)}%`;
 	const secondaryLabel =
 		secondaryUsed === undefined ? "unknown" : `${Math.round(secondaryUsed)}%`;
-	const usageSummary = `5h ${primaryLabel} reset:${formatResetAt(primaryReset)} | weekly ${secondaryLabel} reset:${formatResetAt(secondaryReset)}`;
-	return `${account.email}${suffix} - ${usageSummary}`;
+	return `5h ${primaryLabel} reset:${formatResetAt(primaryReset)} | weekly ${secondaryLabel} reset:${formatResetAt(secondaryReset)}`;
+}
+
+function formatAccountStatusLine(
+	accountManager: AccountManager,
+	email: string,
+): string {
+	const account = accountManager.getAccount(email);
+	if (!account) return email;
+	const tags = getAccountTags(accountManager, account).join(", ");
+	const suffix = tags ? ` (${tags})` : "";
+	return `${account.email}${suffix} - ${formatUsageSummary(accountManager, account)}`;
 }
 
 function getSubcommandCompletions(prefix: string): AutocompleteItem[] | null {
@@ -344,58 +362,234 @@ async function openAccountManagementPanel(
 	accountManager: AccountManager,
 ): Promise<AccountPanelResult> {
 	const accounts = accountManager.getAccounts();
-	const items = accounts.map((account) => ({
-		value: account.email,
-		label: formatAccountStatusLine(accountManager, account.email),
-	}));
 
-	return ctx.ui.custom<AccountPanelResult>((_tui, theme, _kb, done) => {
-		const container = new Container();
-		container.addChild(
-			new Text(theme.fg("accent", theme.bold("MultiCodex Accounts")), 1, 0),
-		);
-		container.addChild(
-			new Text(
-				theme.fg(
-					"dim",
-					"enter: use  u: refresh  r: re-auth  n: add  backspace: remove  esc: cancel",
-				),
-				1,
-				0,
-			),
-		);
+	return ctx.ui.custom<AccountPanelResult>((tui, theme, _kb, done) => {
+		const kb = getKeybindings();
+		let selectedIndex = 0;
+		const maxVisible = 12;
 
-		const selectList = new SelectList(items, 12, getSelectListTheme());
-		selectList.onSelect = (item) => {
-			done({ action: "select", email: item.value });
+		function getSelectedAccount(): Account | undefined {
+			return accounts[selectedIndex];
+		}
+
+		function findNextIndex(from: number, direction: number): number {
+			if (accounts.length === 0) return 0;
+			return Math.max(0, Math.min(accounts.length - 1, from + direction));
+		}
+
+		function renderTag(text: string): string {
+			if (text === "active") {
+				return theme.fg("accent", `[${text}]`);
+			}
+			if (text === "manual") {
+				return theme.fg("warning", `[${text}]`);
+			}
+			if (text === "needs reauth") {
+				return theme.fg("error", `[${text}]`);
+			}
+			if (text === "placeholder") {
+				return theme.fg("warning", `[${text}]`);
+			}
+			if (text === "quota") {
+				return theme.fg("warning", `[${text}]`);
+			}
+			if (text === "pi auth" || text === "pi auth only") {
+				return theme.fg("success", `[${text}]`);
+			}
+			return theme.fg("muted", `[${text}]`);
+		}
+
+		function renderRow(
+			account: Account,
+			selected: boolean,
+			width: number,
+		): string[] {
+			const cursor = selected ? theme.fg("accent", ">") : theme.fg("dim", " ");
+			const name = selected ? theme.bold(account.email) : account.email;
+			const tags = getAccountTags(accountManager, account)
+				.map((tag) => renderTag(tag))
+				.join(" ");
+			const primary = truncateToWidth(
+				`${cursor} ${name}${tags ? ` ${tags}` : ""}`,
+				width,
+				"",
+			);
+			const summaryColor = account.needsReauth
+				? "warning"
+				: isPlaceholderAccount(account)
+					? "muted"
+					: "dim";
+			const secondary = theme.fg(
+				summaryColor,
+				formatUsageSummary(accountManager, account),
+			);
+			return [primary, truncateToWidth(`  ${secondary}`, width, "")];
+		}
+
+		const header = {
+			invalidate() {},
+			render(width: number): string[] {
+				const title = theme.bold("MultiCodex Accounts");
+				const sep = theme.fg("muted", " · ");
+				const hints = [
+					rawKeyHint("enter", "use"),
+					rawKeyHint("u", "refresh"),
+					rawKeyHint("r", "reauth"),
+					rawKeyHint("n", "add"),
+					rawKeyHint("backspace", "remove"),
+					rawKeyHint("esc", "close"),
+				].join(sep);
+				const spacing = Math.max(
+					1,
+					width - visibleWidth(title) - visibleWidth(hints),
+				);
+				const reauthCount = accountManager.getAccountsNeedingReauth().length;
+				const placeholderCount = accounts.filter((account) =>
+					isPlaceholderAccount(account),
+				).length;
+				const status = [
+					`${accounts.length} account${accounts.length === 1 ? "" : "s"}`,
+					reauthCount > 0 ? `${reauthCount} need reauth` : undefined,
+					placeholderCount > 0
+						? `${placeholderCount} placeholder${placeholderCount === 1 ? "" : "s"}`
+						: undefined,
+				]
+					.filter(Boolean)
+					.join(" · ");
+				return [
+					truncateToWidth(`${title}${" ".repeat(spacing)}${hints}`, width, ""),
+					theme.fg("muted", status),
+				];
+			},
 		};
-		selectList.onCancel = () => done(undefined);
-		container.addChild(selectList);
+
+		const list = {
+			invalidate() {},
+			render(width: number): string[] {
+				const lines: string[] = [];
+				if (accounts.length === 0) {
+					return [theme.fg("muted", "  No managed accounts")];
+				}
+
+				const visibleRows = Math.max(1, Math.floor(maxVisible / 2));
+				const startIndex = Math.max(
+					0,
+					Math.min(
+						selectedIndex - Math.floor(visibleRows / 2),
+						Math.max(0, accounts.length - visibleRows),
+					),
+				);
+				const endIndex = Math.min(accounts.length, startIndex + visibleRows);
+
+				for (let index = startIndex; index < endIndex; index++) {
+					const account = accounts[index];
+					if (!account) continue;
+					lines.push(...renderRow(account, index === selectedIndex, width));
+					if (index < endIndex - 1) {
+						lines.push("");
+					}
+				}
+
+				const selected = getSelectedAccount();
+				if (selected) {
+					lines.push("");
+					const detail = isPlaceholderAccount(selected)
+						? `selected: ${selected.email} · restored placeholder, re-auth required`
+						: `selected: ${selected.email}`;
+					lines.push(truncateToWidth(theme.fg("dim", detail), width, ""));
+				}
+
+				const current = selectedIndex + 1;
+				lines.push(
+					theme.fg(
+						"dim",
+						`  ${current}/${accounts.length} visible account rows`,
+					),
+				);
+				return lines;
+			},
+		};
+
+		const container = new Container();
+		container.addChild(new Spacer(1));
+		container.addChild(new DynamicBorder());
+		container.addChild(new Spacer(1));
+		container.addChild(header);
+		container.addChild(new Spacer(1));
+		container.addChild(list);
+		container.addChild(new Spacer(1));
+		container.addChild(new DynamicBorder());
 
 		return {
-			render: (width: number) => container.render(width),
-			invalidate: () => container.invalidate(),
-			handleInput: (data: string) => {
+			render(width: number) {
+				return container.render(width);
+			},
+			invalidate() {
+				container.invalidate();
+			},
+			handleInput(data: string) {
+				if (kb.matches(data, "tui.select.up")) {
+					selectedIndex = findNextIndex(selectedIndex, -1);
+					tui.requestRender();
+					return;
+				}
+				if (kb.matches(data, "tui.select.down")) {
+					selectedIndex = findNextIndex(selectedIndex, 1);
+					tui.requestRender();
+					return;
+				}
+				if (kb.matches(data, "tui.select.pageUp")) {
+					selectedIndex = findNextIndex(selectedIndex, -5);
+					tui.requestRender();
+					return;
+				}
+				if (kb.matches(data, "tui.select.pageDown")) {
+					selectedIndex = findNextIndex(selectedIndex, 5);
+					tui.requestRender();
+					return;
+				}
+				if (
+					kb.matches(data, "tui.select.cancel") ||
+					matchesKey(data, "ctrl+c")
+				) {
+					done(undefined);
+					return;
+				}
+				if (
+					data === "\r" ||
+					data === "\n" ||
+					kb.matches(data, "tui.select.confirm")
+				) {
+					const selected = getSelectedAccount();
+					if (selected) {
+						done({ action: "select", email: selected.email });
+					}
+					return;
+				}
 				if (data.toLowerCase() === "n") {
 					done({ action: "add" });
 					return;
 				}
-				const selected = selectList.getSelectedItem();
-				if (selected && data.toLowerCase() === "u") {
-					done({ action: "refresh", email: selected.value });
-					return;
-				}
-				if (selected && data.toLowerCase() === "r") {
-					done({ action: "reauth", email: selected.value });
-					return;
-				}
-				if (matchesKey(data, Key.backspace)) {
+				if (data.toLowerCase() === "u") {
+					const selected = getSelectedAccount();
 					if (selected) {
-						done({ action: "remove", email: selected.value });
+						done({ action: "refresh", email: selected.email });
 					}
 					return;
 				}
-				selectList.handleInput(data);
+				if (data.toLowerCase() === "r") {
+					const selected = getSelectedAccount();
+					if (selected) {
+						done({ action: "reauth", email: selected.email });
+					}
+					return;
+				}
+				if (matchesKey(data, "backspace")) {
+					const selected = getSelectedAccount();
+					if (selected) {
+						done({ action: "remove", email: selected.email });
+					}
+				}
 			},
 		};
 	});
