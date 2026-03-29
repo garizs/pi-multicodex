@@ -60,11 +60,11 @@ The `/multicodex accounts` panel merges the old `show` and `use` flows into one 
 
 ![MultiCodex use picker](./assets/multicodex-use-picker.png)
 
-- **Enter** activates the highlighted account.
-- **U** refreshes token and usage health for the selected account.
-- **R** re-authenticates the selected account.
-- **N** starts login for a new managed account.
-- **Backspace** removes the selected account after confirmation.
+- **enter** activates the highlighted account.
+- **u** refreshes token and usage health for the selected account.
+- **r** re-authenticates the selected account.
+- **n** starts login for a new managed account.
+- **backspace** removes the selected account after confirmation.
 
 Each row shows the account identifier, active/manual state, reauth state, quota state, linked imported auth state, and cached 5-hour and weekly usage windows.
 

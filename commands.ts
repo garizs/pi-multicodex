@@ -354,7 +354,7 @@ async function openAccountManagementPanel(
 			new Text(
 				theme.fg(
 					"dim",
-					"Enter: use  U: refresh  R: re-auth  N: add  Backspace: remove  Esc: cancel",
+					"enter: use  u: refresh  r: re-auth  n: add  backspace: remove  esc: cancel",
 				),
 				1,
 				0,
