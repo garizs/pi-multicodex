@@ -1,3 +1,10 @@
+## [2.3.1](https://github.com/victor-software-house/pi-multicodex/compare/v2.3.0...v2.3.1) (2026-03-30)
+
+
+### Bug Fixes
+
+* correct account rotation for pi auth exhaustion, selection, and startup race ([4186adb](https://github.com/victor-software-house/pi-multicodex/commit/4186adb742f5538172a9fec673fb794fd3ee866a))
+
 # [2.3.0](https://github.com/victor-software-house/pi-multicodex/compare/v2.2.1...v2.3.0) (2026-03-29)
 
 
