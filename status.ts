@@ -17,7 +17,7 @@ import {
 } from "pi-provider-utils/agent-paths";
 import type { AccountManager } from "./account-manager";
 import { PROVIDER_ID } from "./provider";
-import type { CodexUsageSnapshot } from "./usage";
+import { formatResetAt, type CodexUsageSnapshot } from "./usage";
 
 const STATUS_KEY = "multicodex-usage";
 const SETTINGS_KEY = "pi-multicodex";

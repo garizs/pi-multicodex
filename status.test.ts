@@ -3,6 +3,7 @@ import {
 	createUsageStatusController,
 	type FooterPreferences,
 	formatActiveAccountStatus,
+	formatUsageSummaryText,
 	isManagedModel,
 } from "./status";
 
@@ -44,6 +45,19 @@ describe("isManagedModel", () => {
 		expect(isManagedModel({ provider: "openai-codex" } as never)).toBe(true);
 		expect(isManagedModel({ provider: "anthropic" } as never)).toBe(false);
 		expect(isManagedModel(undefined)).toBe(false);
+	});
+});
+
+describe("formatUsageSummaryText", () => {
+	it("renders both reset windows without throwing", () => {
+		const text = formatUsageSummaryText({
+			primary: { usedPercent: 25, resetAt: Date.now() + 60_000 },
+			secondary: { usedPercent: 60, resetAt: Date.now() + 3_600_000 },
+			fetchedAt: 0,
+		});
+
+		expect(text).toContain("5h 75% left reset:in 1m");
+		expect(text).toContain("weekly 40% left reset:in 1h");
 	});
 });
 
