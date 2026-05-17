@@ -5,7 +5,11 @@ import type {
 import { AccountManager } from "./account-manager";
 import { registerCommands } from "./commands";
 import { handleSessionStart, handleUsageRefresh } from "./hooks";
-import { buildMulticodexProviderConfig, PROVIDER_ID } from "./provider";
+import {
+	buildMulticodexProviderConfig,
+	getActiveApiKey,
+	PROVIDER_ID,
+} from "./provider";
 import { createUsageStatusController } from "./status";
 
 export default function multicodexExtension(pi: ExtensionAPI) {
@@ -19,10 +23,19 @@ export default function multicodexExtension(pi: ExtensionAPI) {
 		}
 	});
 
-	pi.registerProvider(
-		PROVIDER_ID,
-		buildMulticodexProviderConfig(accountManager),
-	);
+	let registeredProviderApiKey: string | undefined;
+	function refreshProviderRegistration(force = false): void {
+		const activeApiKey = getActiveApiKey(accountManager);
+		if (!force && activeApiKey === registeredProviderApiKey) return;
+		registeredProviderApiKey = activeApiKey;
+		pi.registerProvider(
+			PROVIDER_ID,
+			buildMulticodexProviderConfig(accountManager),
+		);
+	}
+
+	refreshProviderRegistration(true);
+	accountManager.onStateChange(() => refreshProviderRegistration());
 
 	registerCommands(pi, accountManager, statusController);
 

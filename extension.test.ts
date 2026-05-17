@@ -1,10 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
+	stateChangeHandlers: [] as Array<() => void>,
 	registerCommands: vi.fn(),
 	handleSessionStart: vi.fn(),
 	handleUsageRefresh: vi.fn(),
 	buildMulticodexProviderConfig: vi.fn(() => ({ mocked: true })),
+	activeCredential: vi.fn(() => "initial-token"),
 	setWarningHandler: vi.fn(),
 	resetSessionWarnings: vi.fn(),
 	statusRefreshFor: vi.fn(),
@@ -18,6 +20,10 @@ vi.mock("./account-manager", () => ({
 	AccountManager: class MockAccountManager {
 		setWarningHandler = mocks.setWarningHandler;
 		resetSessionWarnings = mocks.resetSessionWarnings;
+		onStateChange = vi.fn((handler: () => void) => {
+			mocks.stateChangeHandlers.push(handler);
+			return () => undefined;
+		});
 	},
 }));
 
@@ -30,10 +36,17 @@ vi.mock("./hooks", () => ({
 	handleUsageRefresh: mocks.handleUsageRefresh,
 }));
 
-vi.mock("./provider", () => ({
-	PROVIDER_ID: "openai-codex",
-	buildMulticodexProviderConfig: mocks.buildMulticodexProviderConfig,
-}));
+vi.mock("./provider", () => {
+	function getActiveApiKey() {
+		return mocks.activeCredential();
+	}
+
+	return {
+		PROVIDER_ID: "openai-codex",
+		buildMulticodexProviderConfig: mocks.buildMulticodexProviderConfig,
+		getActiveApiKey,
+	};
+});
 
 vi.mock("./status", () => ({
 	createUsageStatusController: () => ({
@@ -49,10 +62,13 @@ import multicodexExtension from "./extension";
 
 describe("multicodexExtension", () => {
 	beforeEach(() => {
+		mocks.stateChangeHandlers.length = 0;
 		mocks.registerCommands.mockClear();
 		mocks.handleSessionStart.mockClear();
 		mocks.handleUsageRefresh.mockClear();
 		mocks.buildMulticodexProviderConfig.mockClear();
+		mocks.activeCredential.mockReset();
+		mocks.activeCredential.mockReturnValue("initial-token");
 		mocks.setWarningHandler.mockClear();
 		mocks.resetSessionWarnings.mockClear();
 		mocks.statusRefreshFor.mockClear();
@@ -85,6 +101,29 @@ describe("multicodexExtension", () => {
 		expect(handlers.has("turn_end")).toBe(true);
 		expect(handlers.has("model_select")).toBe(true);
 		expect(handlers.has("session_shutdown")).toBe(true);
+	});
+
+	it("refreshes provider registration when the active runtime credential changes", () => {
+		const registerProvider = vi.fn();
+		mocks.activeCredential
+			.mockReturnValueOnce("initial-token")
+			.mockReturnValueOnce("initial-token")
+			.mockReturnValueOnce("new-token");
+
+		multicodexExtension({
+			registerProvider,
+			on: vi.fn(),
+		} as never);
+
+		expect(registerProvider).toHaveBeenCalledTimes(1);
+		expect(mocks.stateChangeHandlers).toHaveLength(1);
+
+		mocks.stateChangeHandlers[0]?.();
+		expect(registerProvider).toHaveBeenCalledTimes(1);
+
+		mocks.stateChangeHandlers[0]?.();
+		expect(registerProvider).toHaveBeenCalledTimes(2);
+		expect(mocks.buildMulticodexProviderConfig).toHaveBeenCalledTimes(2);
 	});
 
 	it("routes session and status events to the helpers", async () => {

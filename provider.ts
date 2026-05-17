@@ -111,7 +111,7 @@ export function getOpenAICodexMirror(): {
 	};
 }
 
-function getActiveApiKey(accountManager: AccountManager): string {
+export function getActiveApiKey(accountManager: AccountManager): string {
 	const active = accountManager.getActiveAccount();
 	if (active && !active.needsReauth) {
 		return active.accessToken;
