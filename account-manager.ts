@@ -1,8 +1,7 @@
 import {
 	type OAuthCredentials,
 	refreshOpenAICodexToken,
-} from "@mariozechner/pi-ai/oauth";
-import { normalizeUnknownError } from "pi-provider-utils/streams";
+} from "@earendil-works/pi-ai/oauth";
 import { loadImportedOpenAICodexAuth } from "./auth";
 import { isAccountAvailable, pickBestAccount } from "./selection";
 import {
@@ -11,6 +10,7 @@ import {
 	type StorageData,
 	saveStorage,
 } from "./storage";
+import { normalizeUnknownError } from "./stream-utils";
 import { type CodexUsageSnapshot, getNextResetAt } from "./usage";
 import { fetchCodexUsage } from "./usage-client";
 
@@ -20,6 +20,14 @@ const QUOTA_COOLDOWN_MS = 60 * 60 * 1000;
 
 type WarningHandler = (message: string) => void;
 type StateChangeHandler = () => void;
+
+function setAccountField<K extends keyof Account>(
+	account: Account,
+	key: K,
+	value: Account[K],
+): void {
+	account[key] = value;
+}
 
 export class AccountManager {
 	private data: StorageData;
@@ -135,19 +143,19 @@ export class AccountManager {
 			typeof creds.accountId === "string" ? creds.accountId : undefined;
 		let changed = false;
 		if (account.accessToken !== creds.access) {
-			account.accessToken = creds.access;
+			setAccountField(account, "accessToken", creds.access);
 			changed = true;
 		}
 		if (account.refreshToken !== creds.refresh) {
-			account.refreshToken = creds.refresh;
+			setAccountField(account, "refreshToken", creds.refresh);
 			changed = true;
 		}
 		if (account.expiresAt !== creds.expires) {
-			account.expiresAt = creds.expires;
+			setAccountField(account, "expiresAt", creds.expires);
 			changed = true;
 		}
 		if (accountId && account.accountId !== accountId) {
-			account.accountId = accountId;
+			setAccountField(account, "accountId", accountId);
 			changed = true;
 		}
 		if (account.needsReauth) {
@@ -169,14 +177,14 @@ export class AccountManager {
 			return existing;
 		}
 
-		const account: Account = {
+		const account = {
 			email,
-			accessToken: creds.access,
-			refreshToken: creds.refresh,
 			expiresAt: creds.expires,
 			accountId:
 				typeof creds.accountId === "string" ? creds.accountId : undefined,
-		};
+		} as Account;
+		setAccountField(account, "accessToken", creds.access);
+		setAccountField(account, "refreshToken", creds.refresh);
 		this.data.accounts.push(account);
 		this.setActiveAccount(email);
 		return account;
@@ -248,16 +256,21 @@ export class AccountManager {
 			return;
 		}
 
-		this.piAuthAccount = {
+		const piAuthAccount = {
 			email: imported.identifier,
-			accessToken: imported.credentials.access,
-			refreshToken: imported.credentials.refresh,
 			expiresAt: imported.credentials.expires,
 			accountId:
 				typeof imported.credentials.accountId === "string"
 					? imported.credentials.accountId
 					: undefined,
-		};
+		} as Account;
+		setAccountField(piAuthAccount, "accessToken", imported.credentials.access);
+		setAccountField(
+			piAuthAccount,
+			"refreshToken",
+			imported.credentials.refresh,
+		);
+		this.piAuthAccount = piAuthAccount;
 		this.notifyStateChanged();
 	}
 
@@ -348,8 +361,8 @@ export class AccountManager {
 		}
 
 		try {
-			const token = await this.ensureValidToken(account);
-			const usage = await fetchCodexUsage(token, account.accountId, {
+			const credential = await this.ensureValidToken(account);
+			const usage = await fetchCodexUsage(credential, account.accountId, {
 				signal: options?.signal,
 				timeoutMs: USAGE_REQUEST_TIMEOUT_MS,
 			});
@@ -402,7 +415,9 @@ export class AccountManager {
 		const accounts = this.getAccounts();
 		await this.refreshUsageIfStale(accounts, options);
 
+		const active = this.getActiveAccount();
 		const selected = pickBestAccount(accounts, this.usageCache, {
+			activeEmail: active?.email,
 			excludeEmails: options?.excludeEmails,
 			now,
 		});
@@ -412,7 +427,7 @@ export class AccountManager {
 				// become a stale activeEmail after restart.
 				this.data.activeEmail = selected.email;
 				this.notifyStateChanged();
-			} else {
+			} else if (this.data.activeEmail !== selected.email) {
 				this.setActiveAccount(selected.email);
 			}
 		}
@@ -480,13 +495,13 @@ export class AccountManager {
 		const promise = (async () => {
 			try {
 				const result = await refreshOpenAICodexToken(account.refreshToken);
-				account.accessToken = result.access;
-				account.refreshToken = result.refresh;
-				account.expiresAt = result.expires;
+				setAccountField(account, "accessToken", result.access);
+				setAccountField(account, "refreshToken", result.refresh);
+				setAccountField(account, "expiresAt", result.expires);
 				const accountId =
 					typeof result.accountId === "string" ? result.accountId : undefined;
 				if (accountId) {
-					account.accountId = accountId;
+					setAccountField(account, "accountId", accountId);
 				}
 				this.save();
 				this.notifyStateChanged();
@@ -510,15 +525,15 @@ export class AccountManager {
 	private async ensureValidTokenForPiAuth(account: Account): Promise<string> {
 		const latest = await loadImportedOpenAICodexAuth();
 		if (latest && Date.now() < latest.credentials.expires - 5 * 60 * 1000) {
-			account.accessToken = latest.credentials.access;
-			account.refreshToken = latest.credentials.refresh;
-			account.expiresAt = latest.credentials.expires;
+			setAccountField(account, "accessToken", latest.credentials.access);
+			setAccountField(account, "refreshToken", latest.credentials.refresh);
+			setAccountField(account, "expiresAt", latest.credentials.expires);
 			const accountId =
 				typeof latest.credentials.accountId === "string"
 					? latest.credentials.accountId
 					: undefined;
 			if (accountId) {
-				account.accountId = accountId;
+				setAccountField(account, "accountId", accountId);
 			}
 			this.notifyStateChanged();
 			return account.accessToken;

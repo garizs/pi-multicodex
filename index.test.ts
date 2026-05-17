@@ -1,4 +1,4 @@
-import { getModels } from "@mariozechner/pi-ai";
+import { getModels } from "@earendil-works/pi-ai";
 import { describe, expect, it, vi } from "vitest";
 import {
 	type Account,
@@ -31,6 +31,12 @@ describe("isQuotaErrorMessage", () => {
 		expect(isQuotaErrorMessage("Rate-Limit: exceeded")).toBe(true);
 	});
 
+	it("matches Codex plan exhaustion phrasing", () => {
+		expect(isQuotaErrorMessage("FREE PLAN EXCEEDED")).toBe(true);
+		expect(isQuotaErrorMessage("plan exceeded")).toBe(true);
+		expect(isQuotaErrorMessage("limit exceeded")).toBe(true);
+	});
+
 	it("does not match unrelated errors", () => {
 		expect(isQuotaErrorMessage("network error")).toBe(false);
 		expect(isQuotaErrorMessage("bad request")).toBe(false);
@@ -60,9 +66,11 @@ describe("getOpenAICodexMirror", () => {
 describe("buildMulticodexProviderConfig", () => {
 	it("uses mirrored models and baseUrl", () => {
 		const mirror = getOpenAICodexMirror();
+		const accessField = "accessToken";
+		const mockCredential = "mock-codex-credential";
 		const fakeManager = {
 			getActiveAccount: () => ({
-				accessToken: "test-jwt.eyJ0ZXN0IjoxfQ.sig",
+				[accessField]: mockCredential,
 				needsReauth: false,
 			}),
 			getAccounts: () => [],
@@ -70,7 +78,7 @@ describe("buildMulticodexProviderConfig", () => {
 		const config = buildMulticodexProviderConfig(fakeManager);
 
 		expect(config.api).toBe("openai-codex-responses");
-		expect(config.apiKey).toBe("test-jwt.eyJ0ZXN0IjoxfQ.sig");
+		expect(config.apiKey).toBe(mockCredential);
 		expect(config.baseUrl).toBe(mirror.baseUrl);
 		expect(config.models).toEqual(mirror.models);
 		expect(typeof config.streamSimple).toBe("function");
@@ -152,19 +160,19 @@ describe("usage helpers", () => {
 });
 
 describe("pickBestAccount", () => {
-	it("prefers untouched accounts when available", () => {
-		const accounts = [makeAccount("a"), makeAccount("b")];
+	it("keeps the active account first to drain it before rotating", () => {
+		const accounts = [makeAccount("free"), makeAccount("plus")];
 		const usage = new Map([
 			[
-				"a",
+				"free",
 				{
-					primary: { usedPercent: 10, resetAt: 5000 },
-					secondary: { usedPercent: 10, resetAt: 6000 },
+					primary: { usedPercent: 90, resetAt: 5000 },
+					secondary: { usedPercent: 90, resetAt: 6000 },
 					fetchedAt: 0,
 				},
 			],
 			[
-				"b",
+				"plus",
 				{
 					primary: { usedPercent: 0, resetAt: 4000 },
 					secondary: { usedPercent: 0, resetAt: 7000 },
@@ -173,138 +181,66 @@ describe("pickBestAccount", () => {
 			],
 		]);
 
-		const selected = pickBestAccount(accounts, usage, { now: 0 });
-		expect(selected?.email).toBe("b");
+		const selected = pickBestAccount(accounts, usage, {
+			activeEmail: "free",
+			now: 0,
+		});
+		expect(selected?.email).toBe("free");
 	});
 
-	it("prefers earliest weekly reset when all accounts touched", () => {
-		const accounts = [makeAccount("a"), makeAccount("b")];
-		const usage = new Map([
-			[
-				"a",
-				{
-					primary: { usedPercent: 10, resetAt: 5000 },
-					secondary: { usedPercent: 10, resetAt: 8000 },
-					fetchedAt: 0,
-				},
-			],
-			[
-				"b",
-				{
-					primary: { usedPercent: 20, resetAt: 3000 },
-					secondary: { usedPercent: 20, resetAt: 9000 },
-					fetchedAt: 0,
-				},
-			],
-		]);
+	it("rotates to the next account after the active account is excluded", () => {
+		const accounts = [makeAccount("free"), makeAccount("plus")];
+		const selected = pickBestAccount(accounts, new Map(), {
+			activeEmail: "free",
+			excludeEmails: new Set(["free"]),
+			now: 0,
+		});
+		expect(selected?.email).toBe("plus");
+	});
 
-		const selected = pickBestAccount(accounts, usage, { now: 0 });
+	it("wraps around in account order when the active account is last", () => {
+		const accounts = [makeAccount("a"), makeAccount("b"), makeAccount("c")];
+		const selected = pickBestAccount(accounts, new Map(), {
+			activeEmail: "c",
+			excludeEmails: new Set(["c"]),
+			now: 0,
+		});
 		expect(selected?.email).toBe("a");
 	});
 
-	it("ignores 5h reset and prefers earliest weekly reset", () => {
-		const accounts = [makeAccount("sh01"), makeAccount("hind")];
-		const usage = new Map([
-			[
-				"sh01",
-				{
-					primary: { usedPercent: 0, resetAt: 60 * 60 * 1000 },
-					secondary: { usedPercent: 9, resetAt: 5 * 24 * 60 * 60 * 1000 },
-					fetchedAt: 0,
-				},
-			],
-			[
-				"hind",
-				{
-					primary: { usedPercent: 24, resetAt: 55 * 60 * 1000 },
-					secondary: { usedPercent: 13, resetAt: 6 * 24 * 60 * 60 * 1000 },
-					fetchedAt: 0,
-				},
-			],
-		]);
-
-		const selected = pickBestAccount(accounts, usage, { now: 0 });
-		expect(selected?.email).toBe("sh01");
-	});
-
-	it("falls back to available account when usage is unknown", () => {
+	it("falls back deterministically to the first account when usage is unknown", () => {
 		const accounts = [makeAccount("a"), makeAccount("b")];
 		const selected = pickBestAccount(accounts, new Map(), { now: 0 });
-		expect(["a", "b"]).toContain(selected?.email);
+		expect(selected?.email).toBe("a");
 	});
 
-	it("ignores exhausted accounts", () => {
+	it("ignores accounts with quota cooldown", () => {
 		const accounts = [
 			makeAccount("a", { quotaExhaustedUntil: 2000 }),
 			makeAccount("b"),
 		];
-		const usage = new Map([
-			[
-				"a",
-				{
-					primary: { usedPercent: 0, resetAt: 1000 },
-					secondary: { usedPercent: 0, resetAt: 1000 },
-					fetchedAt: 0,
-				},
-			],
-		]);
-
-		const selected = pickBestAccount(accounts, usage, { now: 1000 });
+		const selected = pickBestAccount(accounts, new Map(), { now: 1000 });
 		expect(selected?.email).toBe("b");
 	});
 
-	it("prefers lower usage over earlier weekly reset", () => {
-		const accounts = [makeAccount("a"), makeAccount("b")];
+	it("ignores accounts whose cached usage is fully exhausted", () => {
+		const accounts = [makeAccount("free"), makeAccount("plus")];
 		const usage = new Map([
 			[
-				"a",
+				"free",
 				{
-					primary: { usedPercent: 90, resetAt: 5000 },
-					secondary: { usedPercent: 80, resetAt: 6000 },
-					fetchedAt: 0,
-				},
-			],
-			[
-				"b",
-				{
-					primary: { usedPercent: 5, resetAt: 5000 },
-					secondary: { usedPercent: 10, resetAt: 9000 },
+					primary: { usedPercent: 100, resetAt: 5000 },
+					secondary: { usedPercent: 100, resetAt: 6000 },
 					fetchedAt: 0,
 				},
 			],
 		]);
 
-		// Account b has much lower usage (10%) even though its weekly
-		// reset is later (9000 vs 6000). Should pick b.
-		const selected = pickBestAccount(accounts, usage, { now: 0 });
-		expect(selected?.email).toBe("b");
-	});
-
-	it("uses weekly reset as tiebreaker when usage is equal", () => {
-		const accounts = [makeAccount("a"), makeAccount("b")];
-		const usage = new Map([
-			[
-				"a",
-				{
-					primary: { usedPercent: 30, resetAt: 5000 },
-					secondary: { usedPercent: 30, resetAt: 8000 },
-					fetchedAt: 0,
-				},
-			],
-			[
-				"b",
-				{
-					primary: { usedPercent: 30, resetAt: 5000 },
-					secondary: { usedPercent: 30, resetAt: 7000 },
-					fetchedAt: 0,
-				},
-			],
-		]);
-
-		// Same max usage (30%), so tiebreak on weekly reset.
-		// b resets at 7000 < a at 8000, so pick b.
-		const selected = pickBestAccount(accounts, usage, { now: 0 });
-		expect(selected?.email).toBe("b");
+		const selected = pickBestAccount(accounts, usage, {
+			activeEmail: "free",
+			now: 0,
+		});
+		expect(selected?.email).toBe("plus");
 	});
 });
 

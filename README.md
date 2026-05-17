@@ -25,11 +25,13 @@ When you start a session, MultiCodex:
 1. Imports your existing pi Codex auth automatically (if present).
 2. Merges duplicate imported credentials into the managed pool so one account does not consume multiple rotation slots.
 3. Checks usage data across all managed accounts.
-4. Picks the best available account — untouched accounts first, then the one whose weekly reset window ends soonest, then a random available account as fallback.
+4. Keeps using the current active account until it is exhausted, fails auth validation, or is manually changed.
+
+If no active account is usable, MultiCodex moves forward through the account list in order and wraps around at the end. Accounts with quota cooldowns, reauth failures, or cached 100% usage are skipped.
 
 If you pin a specific account from `/multicodex accounts` or `/multicodex use`, that account is used until it hits quota, fails auth validation, or you clear the override.
 
-When a request hits a quota or rate limit **before** any output is streamed, MultiCodex marks that account exhausted, picks the next available one, and retries. This happens up to 5 times transparently. If token validation or token refresh fails before the request starts, MultiCodex skips that account and retries another healthy one. If the manual override account fails, the override is cleared and rotation continues with the remaining accounts. Once output has started streaming, the error is surfaced as-is — no mid-stream account switching.
+When a request hits a quota, rate limit, or plan-exhaustion error **before** any output is streamed, MultiCodex marks that account exhausted, picks the next available one, and retries. This happens up to 5 times transparently. If token validation or token refresh fails before the request starts, MultiCodex skips that account and retries another healthy one. If the manual override account fails, the override is cleared and rotation continues with the remaining accounts. Once output has started streaming, the error is surfaced as-is — no mid-stream account switching.
 
 ## Commands
 
@@ -85,9 +87,9 @@ You can customize which fields appear and their ordering with `/multicodex foote
 - **Provider override.** MultiCodex registers itself as the `openai-codex` provider. You do not need to select a different provider or change your model — it works with whatever Codex model you already use.
 - **Auth import.** When pi has stored Codex OAuth credentials, MultiCodex imports them automatically and merges duplicate credentials into existing managed accounts when possible.
 - **Token refresh.** OAuth tokens are refreshed before expiry so requests do not fail due to stale credentials. You can also force a health refresh with `/multicodex refresh` or re-authenticate explicitly with `/multicodex reauth`.
-- **Usage tracking.** Usage data is fetched from the Codex API and cached for 5 minutes per account. The footer renders cached data immediately and refreshes in the background.
+- **Usage tracking and warmup.** Usage data is fetched from the Codex API and cached for 5 minutes per account. Session startup first refreshes usage for every account, then starts a background warmup pass that sends one minimal Codex `ping` request per account (`maxTokens: 1`, SSE transport) and refreshes usage again. Later turns refresh stale usage metadata only; they do not spend extra LLM calls.
 - **Quota cooldown.** When an account is exhausted, it stays on cooldown until its next known reset time (or 1 hour if the reset time is unknown).
-- **Shared utility seams.** Provider mirroring, stream primitives, and `~/.pi/agent/*` path helpers are shared with `pi-credential-vault` through `@victor-software-house/pi-provider-utils`. MultiCodex still owns account storage, token policy, footer behavior, and command UX.
+- **Local utility seams.** Provider mirroring, stream primitives, and `~/.pi/agent/*` path helpers live inside MultiCodex and use current `@earendil-works/*` pi packages directly.
 
 ## Local development
 
