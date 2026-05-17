@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
 		accounts: [] as Array<Record<string, unknown>>,
 		activeEmail: undefined as string | undefined,
 	},
+	fetchCodexUsage: vi.fn(),
 	loadImportedOpenAICodexAuth: vi.fn(),
 	saveStorage: vi.fn(),
 }));
@@ -22,8 +23,12 @@ vi.mock("./auth", () => ({
 	loadImportedOpenAICodexAuth: mocks.loadImportedOpenAICodexAuth,
 }));
 
-vi.mock("@mariozechner/pi-ai/oauth", () => ({
+vi.mock("@earendil-works/pi-ai/oauth", () => ({
 	refreshOpenAICodexToken: vi.fn(),
+}));
+
+vi.mock("./usage-client", () => ({
+	fetchCodexUsage: mocks.fetchCodexUsage,
 }));
 
 import { AccountManager } from "./account-manager";
@@ -376,6 +381,65 @@ describe("AccountManager pi auth exhaustion handling", () => {
 		const managedAccount = manager.getAccount("managed@example.com");
 		expect(piAccount?.quotaExhaustedUntil).toBeUndefined();
 		expect(managedAccount?.quotaExhaustedUntil).toBeUndefined();
+	});
+});
+
+describe("AccountManager ordered activation", () => {
+	beforeEach(() => {
+		vi.clearAllMocks();
+		mocks.storageData.accounts = [
+			{
+				email: "free@example.com",
+				accessToken: "free-access",
+				refreshToken: "free-refresh",
+				expiresAt: Date.now() + 3600_000,
+			},
+			{
+				email: "plus@example.com",
+				accessToken: "plus-access",
+				refreshToken: "plus-refresh",
+				expiresAt: Date.now() + 3600_000,
+			},
+		];
+		mocks.storageData.activeEmail = "free@example.com";
+		mocks.loadImportedOpenAICodexAuth.mockResolvedValue(undefined);
+		mocks.fetchCodexUsage.mockImplementation((token: string) =>
+			Promise.resolve({
+				primary: {
+					usedPercent: token === "free-access" ? 90 : 0,
+					resetAt: Date.now() + 3600_000,
+				},
+				secondary: {
+					usedPercent: token === "free-access" ? 90 : 0,
+					resetAt: Date.now() + 7 * 24 * 3600_000,
+				},
+				fetchedAt: Date.now(),
+			}),
+		);
+	});
+
+	it("keeps the current active account even when another account has lower usage", async () => {
+		const manager = new AccountManager();
+
+		const selected = await manager.activateBestAccount();
+
+		expect(selected?.email).toBe("free@example.com");
+		expect(mocks.saveStorage).not.toHaveBeenCalledWith(
+			expect.objectContaining({ activeEmail: "plus@example.com" }),
+		);
+	});
+
+	it("moves to the next account only after the active account is excluded", async () => {
+		const manager = new AccountManager();
+
+		const selected = await manager.activateBestAccount({
+			excludeEmails: new Set(["free@example.com"]),
+		});
+
+		expect(selected?.email).toBe("plus@example.com");
+		expect(mocks.saveStorage).toHaveBeenCalledWith(
+			expect.objectContaining({ activeEmail: "plus@example.com" }),
+		);
 	});
 });
 

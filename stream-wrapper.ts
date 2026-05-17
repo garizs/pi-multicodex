@@ -6,15 +6,15 @@ import {
 	createAssistantMessageEventStream,
 	type Model,
 	type SimpleStreamOptions,
-} from "@mariozechner/pi-ai";
+} from "@earendil-works/pi-ai";
+import type { AccountManager } from "./account-manager";
+import { isQuotaErrorMessage } from "./quota";
 import {
 	createErrorAssistantMessage,
 	createLinkedAbortController,
 	normalizeUnknownError,
 	rewriteProviderOnEvent,
-} from "pi-provider-utils/streams";
-import type { AccountManager } from "./account-manager";
-import { isQuotaErrorMessage } from "./quota";
+} from "./stream-utils";
 
 const MAX_ROTATION_RETRIES = 5;
 
@@ -97,6 +97,13 @@ export function createStreamWrapper(
 						context,
 						{
 							...options,
+							// Pi's current Codex provider defaults to WebSocket transport and
+							// caches sockets by sessionId. That makes account switching unsafe:
+							// the next request can reuse a socket authenticated as the previous
+							// account, and quota errors arrive after a start event, too late for
+							// transparent retry. Force SSE so every attempt uses this token and
+							// quota/auth failures happen before any output is forwarded.
+							transport: "sse",
 							apiKey: token,
 							signal: abortController.signal,
 						},

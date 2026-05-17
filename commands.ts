@@ -1,11 +1,11 @@
 import { promises as fs, constants as fsConstants } from "node:fs";
 import path from "node:path";
-import { loginOpenAICodex } from "@mariozechner/pi-ai/oauth";
+import { loginOpenAICodex } from "@earendil-works/pi-ai/oauth";
 import type {
 	ExtensionAPI,
 	ExtensionCommandContext,
-} from "@mariozechner/pi-coding-agent";
-import { DynamicBorder, rawKeyHint } from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
+import { DynamicBorder, rawKeyHint } from "@earendil-works/pi-coding-agent";
 import {
 	type AutocompleteItem,
 	Container,
@@ -14,18 +14,18 @@ import {
 	Spacer,
 	truncateToWidth,
 	visibleWidth,
-} from "@mariozechner/pi-tui";
-import { getAgentSettingsPath } from "pi-provider-utils/agent-paths";
-import { normalizeUnknownError } from "pi-provider-utils/streams";
+} from "@earendil-works/pi-tui";
 import type { AccountManager } from "./account-manager";
+import { getAgentSettingsPath } from "./agent-paths";
 import { openLoginInBrowser } from "./browser";
 import {
+	type createUsageStatusController,
 	formatUsageSummaryText,
 	loadFooterPreferences,
 	type PercentDisplayMode,
-	type createUsageStatusController,
 } from "./status";
 import { type Account, STORAGE_FILE } from "./storage";
+import { normalizeUnknownError } from "./stream-utils";
 import { isUsageUntouched } from "./usage";
 
 const SETTINGS_FILE = getAgentSettingsPath();
@@ -607,7 +607,11 @@ async function openAccountManagementFlow(
 			continue;
 		}
 
-		const result = await openAccountManagementPanel(ctx, accountManager, usageMode);
+		const result = await openAccountManagementPanel(
+			ctx,
+			accountManager,
+			usageMode,
+		);
 		if (!result) return;
 
 		if (result.action === "add") {
@@ -722,9 +726,10 @@ async function runRotationSubcommand(
 	ctx: ExtensionCommandContext,
 ): Promise<void> {
 	const lines = [
-		"Current policy: manual account first, then untouched accounts, then earliest weekly reset, then random fallback.",
+		"Current policy: manual account first, then sticky active account until quota/auth failure, then next account in list order.",
+		"Accounts with quota cooldowns, reauth failures, or cached 100% usage are skipped.",
 		"If token validation fails before a request starts, MultiCodex skips that account and retries another one.",
-		"If a request hits quota or rate limit before any output streams, MultiCodex marks the account on cooldown and retries.",
+		"If a request hits quota, rate limit, or plan exhaustion before any output streams, MultiCodex marks the account on cooldown and retries.",
 		"If pi auth is active, it participates in rotation as an ephemeral account without being persisted.",
 	];
 
@@ -885,12 +890,7 @@ async function runRefreshSubcommand(
 		await openAccountManagementFlow(pi, ctx, accountManager, statusController);
 		return;
 	}
-	await refreshSingleAccount(
-		ctx,
-		accountManager,
-		rest,
-		await loadUsageMode(),
-	);
+	await refreshSingleAccount(ctx, accountManager, rest, await loadUsageMode());
 	await statusController.refreshFor(ctx);
 }
 

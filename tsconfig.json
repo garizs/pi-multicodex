@@ -11,9 +11,7 @@
 	"include": [
 		"abort-utils.ts",
 		"account-manager.ts",
-		"browser.ts",
-		"account-manager.ts",
-		"abort-utils.ts",
+		"agent-paths.ts",
 		"browser.ts",
 		"commands.ts",
 		"extension.test.ts",
@@ -26,9 +24,12 @@
 		"quota.ts",
 		"selection.ts",
 		"storage.ts",
+		"stream-utils.ts",
+		"stream-wrapper.test.ts",
 		"stream-wrapper.ts",
 		"usage-client.ts",
 		"usage.ts",
-		"vitest.config.ts"
+		"vitest.config.ts",
+		"warmup.ts"
 	]
 }
